@@ -459,11 +459,22 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
     addAndMakeVisible (eqBtn);
     eqAtt = std::make_unique<AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "eqon", eqBtn);
 
-    // Input pan — horizontal green slider centered in the top bar.
+    // Input volume (delay-send) knob — green, top bar.
+    inVolKnob.setSliderStyle (Slider::RotaryHorizontalVerticalDrag);
+    inVolKnob.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
+    inVolKnob.getProperties().set ("glowPink", false);   // green
+    addAndMakeVisible (inVolKnob);
+    inVolAtt = std::make_unique<AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "indrive", inVolKnob);
+
+    inVolLabel.setText ("INPUT", dontSendNotification);
+    inVolLabel.setJustificationType (Justification::centred);
+    inVolLabel.setFont (neon::makeFont (10.5f, Font::bold));
+    inVolLabel.setColour (Label::textColourId, neon::neonGreen);
+    addAndMakeVisible (inVolLabel);
+
+    // Input pan — horizontal green slider centered in the top bar (no value box).
     panSlider.setSliderStyle (Slider::LinearHorizontal);
-    panSlider.setTextBoxStyle (Slider::TextBoxRight, false, 40, 16);
-    panSlider.setColour (Slider::textBoxTextColourId, neon::neonGreen);
-    panSlider.setColour (Slider::textBoxOutlineColourId, Colours::transparentBlack);
+    panSlider.setTextBoxStyle (Slider::NoTextBox, false, 0, 0);
     panSlider.setDoubleClickReturnValue (true, 0.0);
     addAndMakeVisible (panSlider);
     panAtt = std::make_unique<AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "inpan", panSlider);
@@ -598,19 +609,32 @@ void DextroDelayAudioProcessorEditor::resized()
     const int x0 = plate.getX() + 18;
     const int w  = plate.getWidth() - 36;
 
-    // Input pan, centered in the empty top-bar space between title and logo.
+    // Input section (volume knob + pan slider), centered in the empty top-bar
+    // space between the title and the logo.
     {
-        const int panW = 214, panH = 40;
-        const int regionL = plate.getX() + 392;
+        const int knobSz = 42;
+        const int panW   = 156;
+        const int gap    = 20;
+        const int groupW = knobSz + gap + panW;
+        const int regionL = plate.getX() + 372;
         const int regionR = plate.getRight() - 150;
-        const int cx = (regionL + regionR) / 2;
-        panArea = { cx - panW / 2, plate.getY() + 8, panW, panH };
-        panLabel.setBounds (panArea.getX(), panArea.getY(), panArea.getWidth(), 13);
-        panSlider.setBounds (panArea.getX() + 12, panArea.getY() + 14, panArea.getWidth() - 12, 24);
+        const int gx = (regionL + regionR) / 2 - groupW / 2;
+
+        const int labelY = plate.getY() + 7;
+        const int ctlY   = plate.getY() + 21;
+        const int centreY = ctlY + knobSz / 2;
+
+        inVolLabel.setBounds (gx - 8, labelY, knobSz + 16, 12);
+        inVolKnob.setBounds  (gx, ctlY, knobSz, knobSz);
+
+        const int panX = gx + knobSz + gap;
+        panLabel.setBounds  (panX, labelY, panW, 12);                 // centered over the slider
+        panSlider.setBounds (panX, centreY - 17, panW, 34);          // tall enough for cap + glow
+        panArea = { panX, ctlY, panW, knobSz };
     }
 
     // Wave box (double height — a big EQ / scope screen).
-    const int waveY = plate.getY() + 60;
+    const int waveY = plate.getY() + 66;
     const int waveH = 280;
     wavePanel = { x0, waveY, w, waveH };
     scope.setBounds (wavePanel.reduced (2));

@@ -8,6 +8,7 @@
 //==============================================================================
 namespace pid
 {
+    static const juce::String indrive  = "indrive";
     static const juce::String inpan    = "inpan";
     static const juce::String sync     = "sync";
     static const juce::String division = "division";
@@ -82,6 +83,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout DextroDelayAudioProcessor::c
     params.push_back (std::make_unique<P> (pid::time, "Time",
         R (5.0f, 2000.0f, 0.01f, 0.3f), 380.0f,
         Attr().withStringFromValueFunction ([ms] (float v, int) { return ms (v); })));
+
+    // Input volume into the delay chain (delay-send). At 0 % no new signal
+    // feeds the echoes; the dry pass-through is untouched.
+    params.push_back (std::make_unique<P> (pid::indrive, "Input Volume",
+        R (0.0f, 1.5f, 0.001f), 1.0f,
+        Attr().withStringFromValueFunction ([pct] (float v, int) { return pct (v); })));
 
     // Input pan (applied BEFORE the delay chain, so ping-pong has L/R asymmetry
     // to work with even on centred input). -1 = hard left, +1 = hard right.
@@ -228,6 +235,7 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     p.mix           = apvts.getRawParameterValue (pid::mix)->load();
     p.outputGainDb  = apvts.getRawParameterValue (pid::output)->load();
     p.pingpong      = apvts.getRawParameterValue (pid::pingpong)->load() > 0.5f;
+    p.inputDrive    = apvts.getRawParameterValue (pid::indrive)->load();
     p.eqOn          = apvts.getRawParameterValue (pid::eqon)->load() > 0.5f;
     for (int b = 0; b < dxeq::kNumBands; ++b)
     {

@@ -35,6 +35,8 @@ public:
         float mix         = 0.35f;    // 0 = dry, 1 = wet (equal-power-ish crossfade)
         float width       = 1.0f;     // stereo width of the wet signal (0 = mono)
         bool  pingpong    = false;    // cross-couple the feedback L<->R
+        float inputDrive  = 1.0f;     // level of the input fed INTO the delay (0 = no new
+                                      // echoes) — does NOT affect the dry pass-through
 
         // --- self-ducking (sidechain = dry input) ---
         float duckDepthDb = 18.0f;    // max gain reduction of the wet when vocal is loud
@@ -144,16 +146,22 @@ public:
             const float filtR = lpR - hpR;
 
             // ---- write back into the delay line ----------------------------
+            // Only the INPUT into the delay is scaled by inputDrive; the dry
+            // pass-through (below) and the duck detector (above) stay at full,
+            // so turning this down stops feeding the echoes without silencing
+            // the dry signal or disabling ducking.
+            const float inL = dryL * p.inputDrive;
+            const float inR = dryR * p.inputDrive;
             float writeL, writeR;
             if (p.pingpong)
             {
-                writeL = dryL + filtR * fb;
-                writeR = dryR + filtL * fb;
+                writeL = inL + filtR * fb;
+                writeR = inR + filtL * fb;
             }
             else
             {
-                writeL = dryL + filtL * fb;
-                writeR = dryR + filtR * fb;
+                writeL = inL + filtL * fb;
+                writeR = inR + filtR * fb;
             }
             bufL[(size_t) wIdx] = writeL;
             bufR[(size_t) wIdx] = writeR;

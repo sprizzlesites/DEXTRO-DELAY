@@ -16,9 +16,14 @@ into two clearly separated panels — **DELAY / ECHO** (green) and
 **SELF-DUCK / DYNAMICS** (purple) — above a "wave box" screen that toggles
 between a live scope and an interactive EQ.
 
-An **INPUT PAN** slider sits in the top bar. It pans the input **before** the
-delay chain (constant-power balance), so ping-pong has real L/R asymmetry to
-bounce even on centred/mono material instead of just echoing down the middle.
+The top bar has two input controls, both applied **before** the delay chain:
+- **INPUT** — the volume feeding the delay (a delay-send). At 0 % no new signal
+  enters the echoes, but the **dry pass-through is untouched** and the ducker
+  still keys off the full dry vocal — so you can fade the echoes out from the
+  source without silencing the dry signal.
+- **INPUT PAN** — a constant-power balance, so ping-pong has real L/R asymmetry
+  to bounce even on centred/mono material instead of just echoing down the
+  middle.
 
 ## Wave box
 

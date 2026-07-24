@@ -113,7 +113,11 @@ private:
     juce::TextButton eqBtn { "EQ" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqAtt;
 
-    // Input pan — horizontal green slider centered in the top bar.
+    // Input section in the top bar — a volume (delay-send) knob + a horizontal
+    // green pan slider.
+    juce::Slider inVolKnob;
+    juce::Label  inVolLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inVolAtt;
     juce::Slider panSlider;
     juce::Label  panLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAtt;

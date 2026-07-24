@@ -173,8 +173,16 @@ public:
         {
             const float cy = (float) y + (float) h * 0.5f;
             const float tubeH = 8.0f;
-            auto slot = juce::Rectangle<float> ((float) x, cy - tubeH * 0.5f, (float) w, tubeH);
             const float rad = tubeH * 0.5f;
+
+            // Inset the track by a pad and remap the thumb into it, so the cap
+            // and its bloom always stay inside the component bounds (never
+            // clipped at the ends). The pad covers the cap half-width + bloom.
+            const float pad = 16.0f;
+            const float trackL = (float) x + pad;
+            const float trackR = (float) x + (float) w - pad;
+            const float pos = juce::jmap (sliderPos, (float) x, (float) (x + w), trackL, trackR);
+            auto slot = juce::Rectangle<float> (trackL, cy - tubeH * 0.5f, juce::jmax (1.0f, trackR - trackL), tubeH);
 
             g.setColour (juce::Colours::black.withAlpha (0.7f));
             g.fillRoundedRectangle (slot.expanded (3.0f), rad + 3.0f);
@@ -194,15 +202,15 @@ public:
 
             // Centre detent tick.
             g.setColour (juce::Colours::white.withAlpha (0.18f));
-            g.fillRect (juce::Rectangle<float> ((float) x + (float) w * 0.5f - 0.5f, cy - tubeH, 1.0f, tubeH * 2.0f));
+            g.fillRect (juce::Rectangle<float> (slot.getCentreX() - 0.5f, cy - tubeH, 1.0f, tubeH * 2.0f));
 
             // Black cap with a green neon outline + bloom.
-            auto cap = juce::Rectangle<float> (sliderPos - 11.0f, cy - 14.0f, 22.0f, 28.0f);
+            auto cap = juce::Rectangle<float> (pos - 10.0f, cy - 11.0f, 20.0f, 22.0f);
             g.setColour (juce::Colours::black.withAlpha (0.65f));
             g.fillRoundedRectangle (cap.translated (0.0f, 2.0f).expanded (1.0f), 6.0f);
-            for (int i = 4; i >= 1; --i)
+            for (int i = 3; i >= 1; --i)
             {
-                g.setColour (neon::neonGreen.withAlpha (0.07f * (float) (5 - i)));
+                g.setColour (neon::neonGreen.withAlpha (0.08f * (float) (4 - i)));
                 g.drawRoundedRectangle (cap.expanded ((float) i * 1.3f), 6.0f + (float) i, 1.8f);
             }
             juce::ColourGradient body (juce::Colour (0xff2a2c34), cap.getX(), cap.getY(),
@@ -213,7 +221,7 @@ public:
             g.setColour (neon::neonGreen.withAlpha (0.95f));
             g.drawRoundedRectangle (cap, 5.5f, 1.6f);
             g.setColour (neon::neonGreen.withAlpha (0.85f));
-            g.fillRect (juce::Rectangle<float> (cap.getCentreX() - 1.0f, cap.getY() + 5.0f, 2.0f, cap.getHeight() - 10.0f));
+            g.fillRect (juce::Rectangle<float> (cap.getCentreX() - 1.0f, cap.getY() + 4.0f, 2.0f, cap.getHeight() - 8.0f));
             return;
         }
 
