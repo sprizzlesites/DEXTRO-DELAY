@@ -11,10 +11,14 @@ are always there — ducking only controls how much of them you hear. The result
 is a big, lush delay that never fights the lead vocal for space.
 
 Styled with the neon/chrome hardware look — a metallic-black faceplate on a
-black void — re-tuned to a **purple + deep-blue** palette. The controls are
-grouped into two clearly separated panels — **DELAY / ECHO** (blue) and
+black void — in a **purple + neon-green** palette. The controls are grouped
+into two clearly separated panels — **DELAY / ECHO** (green) and
 **SELF-DUCK / DYNAMICS** (purple) — above a "wave box" screen that toggles
 between a live scope and an interactive EQ.
+
+An **INPUT PAN** slider sits in the top bar. It pans the input **before** the
+delay chain (constant-power balance), so ping-pong has real L/R asymmetry to
+bounce even on centred/mono material instead of just echoing down the middle.
 
 ## Wave box
 
@@ -27,8 +31,10 @@ A button in the wave box's bottom-left corner switches the screen between:
     - **scroll** over a node to adjust its **Q** (0.3 wide → 6.0 surgical),
     - **double-click** to reset its gain.
   The purple curve is the real biquad response, and the active band's
-  frequency / gain / Q read out at the top. The EQ is bypassed when the toggle
-  is off.
+  frequency / gain / Q read out at the top. Behind the curve, a **reactive
+  cube-pixel spectrum** of the wet signal (green at the bottom → blue → purple
+  at the top) shows how the EQ is shaping the echoes in real time. The EQ is
+  bypassed when the toggle is off.
 
 ## Controls
 
@@ -37,7 +43,7 @@ A button in the wave box's bottom-left corner switches the screen between:
 |---|---|
 | **SYNC** | Tempo-sync toggle (**on by default**). When on, the Time knob locks to note values from the host tempo; turn it off for free millisecond timing |
 | **TIME** | With SYNC on, steps through note divisions — **1/1, 1/2, 1/4, 1/8, 1/16, 1/32**. With SYNC off, a free delay time of 5 ms – 2 s |
-| **R OFFSET** | Adds to the right channel's time (ms) for stereo spread |
+| **L/R OFFSET** | Bipolar, centred at 0: turn left to delay the **left** channel more, right to delay the **right** channel more (± 250 ms) |
 | **FEEDBACK** | Regeneration, up to 98 % |
 | **TONE** | Hi-cut in the feedback path — repeats darken |
 | **LOW CUT** | Lo-cut in the feedback path — repeats thin out |

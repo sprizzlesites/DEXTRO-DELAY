@@ -3,10 +3,12 @@
 
 #include <cstring>
 #include <vector>
+#include <algorithm>
 
 //==============================================================================
 namespace pid
 {
+    static const juce::String inpan    = "inpan";
     static const juce::String sync     = "sync";
     static const juce::String division = "division";
     static const juce::String time     = "time";
@@ -81,9 +83,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout DextroDelayAudioProcessor::c
         R (5.0f, 2000.0f, 0.01f, 0.3f), 380.0f,
         Attr().withStringFromValueFunction ([ms] (float v, int) { return ms (v); })));
 
-    params.push_back (std::make_unique<P> (pid::offset, "R Offset",
-        R (0.0f, 250.0f, 0.01f, 0.5f), 0.0f,
-        Attr().withStringFromValueFunction ([ms] (float v, int) { return ms (v); })));
+    // Input pan (applied BEFORE the delay chain, so ping-pong has L/R asymmetry
+    // to work with even on centred input). -1 = hard left, +1 = hard right.
+    params.push_back (std::make_unique<P> (pid::inpan, "Input Pan",
+        R (-1.0f, 1.0f, 0.001f), 0.0f,
+        Attr().withStringFromValueFunction ([] (float v, int)
+        {
+            const int p = juce::roundToInt (std::abs (v) * 100.0f);
+            return p == 0 ? juce::String ("C")
+                          : (v < 0 ? "L" : "R") + juce::String (p);
+        })));
+
+    // Bipolar L/R offset: centre = both channels equal; turn left to delay the
+    // LEFT channel more, right to delay the RIGHT channel more.
+    params.push_back (std::make_unique<P> (pid::offset, "L/R Offset",
+        R (-250.0f, 250.0f, 0.01f), 0.0f,
+        Attr().withStringFromValueFunction ([] (float v, int)
+        {
+            if (std::abs (v) < 0.05f) return juce::String ("0 ms");
+            return (v < 0 ? "L " : "R ") + juce::String (std::abs (v), std::abs (v) < 100.0f ? 1 : 0) + " ms";
+        })));
 
     params.push_back (std::make_unique<P> (pid::feedback, "Feedback",
         R (0.0f, 0.98f, 0.001f), 0.45f,
@@ -194,8 +213,10 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // Base delay: a locked note value when synced, else the free ms knob.
     const float base = sync ? synced::divisionMs (div, bpm) : t;
-    p.delayMsL       = juce::jmin (5000.0f, base);
-    p.delayMsR       = juce::jmin (5000.0f, base + off);
+    // Bipolar L/R offset: negative delays the LEFT channel more, positive the
+    // RIGHT — so the knob's direction matches which side trails.
+    p.delayMsL       = juce::jmin (5000.0f, base + juce::jmax (0.0f, -off));
+    p.delayMsR       = juce::jmin (5000.0f, base + juce::jmax (0.0f,  off));
     p.feedback      = apvts.getRawParameterValue (pid::feedback)->load();
     p.dampHz        = apvts.getRawParameterValue (pid::tone)->load();
     p.lowCutHz      = apvts.getRawParameterValue (pid::lowcut)->load();
@@ -216,8 +237,18 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     }
     engine.setParams (p);
 
+    // Input pan BEFORE the delay chain (constant-power balance). At centre both
+    // channels stay at unity power; panned, one side leads so ping-pong has
+    // real L/R asymmetry to bounce even from centred material.
+    const float pan   = apvts.getRawParameterValue (pid::inpan)->load();
+    const float ang   = (pan * 0.5f + 0.5f) * juce::MathConstants<float>::halfPi;
+    const float panL  = std::cos (ang) * juce::MathConstants<float>::sqrt2;   // 1.0 at centre
+    const float panR  = std::sin (ang) * juce::MathConstants<float>::sqrt2;
+
     if (numCh >= 2)
     {
+        buffer.applyGain (0, 0, n, panL);
+        buffer.applyGain (1, 0, n, panR);
         engine.process (buffer.getWritePointer (0), buffer.getWritePointer (1), n);
     }
     else if (numCh == 1)
@@ -227,6 +258,14 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         auto* l = buffer.getWritePointer (0);
         std::memcpy (tmp.get(), l, sizeof (float) * (size_t) n);
         engine.process (l, tmp.get(), n);
+    }
+
+    // Feed the analyzer with the wet (post-duck, post-EQ) signal.
+    {
+        const float* wet = engine.getWetMono();
+        const int    wc  = juce::jmin (engine.getWetCount(), n);
+        for (int i = 0; i < wc; ++i)
+            pushAnalyzerSample (wet[i]);
     }
 
     // Feed the scope ring (decimated) so the UI can draw env + duck history.
@@ -244,6 +283,22 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             scopeHead.store ((h + 1) % kScopeSize, std::memory_order_release);
         }
     }
+}
+
+//==============================================================================
+void DextroDelayAudioProcessor::pushAnalyzerSample (float s)
+{
+    if (analyzerFifoIndex == kFftSize)
+    {
+        if (! analyzerBlockReady.load())
+        {
+            std::fill (analyzerFftData.begin(), analyzerFftData.end(), 0.0f);
+            std::copy (analyzerFifo.begin(), analyzerFifo.end(), analyzerFftData.begin());
+            analyzerBlockReady.store (true);
+        }
+        analyzerFifoIndex = 0;
+    }
+    analyzerFifo[(size_t) analyzerFifoIndex++] = s;
 }
 
 //==============================================================================

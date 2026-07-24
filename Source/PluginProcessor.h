@@ -59,6 +59,15 @@ public:
     float getCurrentDuckGain() const { return currentDuck.load(); }
     float getCurrentBpm()      const { return currentBpm.load(); }
 
+    //==========================================================================
+    // Spectrum analyzer of the wet (post-duck, post-EQ) signal. The audio
+    // thread fills a fifo; the editor windows + transforms the ready block.
+    static constexpr int kFftOrder = 11;
+    static constexpr int kFftSize  = 1 << kFftOrder;   // 2048
+    bool   analyzerReady()      const { return analyzerBlockReady.load(); }
+    void   clearAnalyzerReady()       { analyzerBlockReady.store (false); }
+    float* analyzerData()             { return analyzerFftData.data(); }
+
 private:
     DuckingDelay engine;
 
@@ -68,6 +77,13 @@ private:
     std::atomic<int> scopeHead { 0 };
     std::atomic<float> currentDuck { 1.0f };
     std::atomic<float> currentBpm  { 120.0f };
+
+    // analyzer fifo (audio thread writes, editor reads)
+    std::array<float, (size_t) kFftSize>       analyzerFifo { };
+    std::array<float, (size_t) (kFftSize * 2)> analyzerFftData { };
+    std::atomic<bool> analyzerBlockReady { false };
+    int analyzerFifoIndex = 0;
+    void pushAnalyzerSample (float s);
     int   scopeDecim = 0;
     int   scopeDecimN = 32;   // push ~1 frame per 32 samples
 

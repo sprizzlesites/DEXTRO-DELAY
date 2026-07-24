@@ -23,20 +23,21 @@ namespace neon
     inline const juce::Colour inset         { 0xff0b0b12 };  // dark wells
     inline const juce::Colour screenBg      { 0xff0d0a1c };  // deep purple-black glass
 
-    // --- Neon hues: purple (primary) + darker blue (secondary) --------------
+    // --- Neon hues: purple (primary) + neon green (secondary) ---------------
     // The two identifiers `neonPink` / `neonCyan` are kept so the shared
     // NeonLookAndFeel drawing code needs no edits, but their values are now
-    // purple and a deep blue. Gradients that used to run pink->cyan now run
-    // purple->blue.
+    // purple and neon green. Gradients that used to run pink->cyan now run
+    // purple->green.
     inline const juce::Colour neonPink      { 0xffa64dff };  // primary  -> vivid purple
-    inline const juce::Colour neonCyan      { 0xff3d6bff };  // secondary-> darker electric blue
+    inline const juce::Colour neonCyan      { 0xff39ff88 };  // secondary-> neon green
     inline const juce::Colour neonMagenta   { 0xffb84dff };  // purple-magenta accent
     inline const juce::Colour neonViolet    { 0xff7a5bff };  // soft violet accent
-    inline const juce::Colour neonCyanDim   { 0xff1c3a7a };  // dim deep blue
+    inline const juce::Colour neonCyanDim   { 0xff1c5a3a };  // dim green
 
     // Readable aliases for DEXTRO DELAY's own code.
     inline const juce::Colour neonPurple    { neonPink };
-    inline const juce::Colour neonBlue      { neonCyan };
+    inline const juce::Colour neonGreen     { neonCyan };
+    inline const juce::Colour neonBlue      { neonCyan };  // legacy alias (now green)
 
     inline const juce::Colour textBright    { 0xffeef2fa };
     inline const juce::Colour textDim       { 0xff8b91a8 };

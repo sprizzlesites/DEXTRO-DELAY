@@ -102,7 +102,7 @@ void ScopeView::paintScope (Graphics& g)
     auto r = getLocalBounds().toFloat();
     drawGlass (g, r);
 
-    g.setColour (neon::neonBlue.withAlpha (0.08f));
+    g.setColour (neon::neonGreen.withAlpha (0.08f));
     for (int i = 1; i < 8; ++i)
         g.drawVerticalLine ((int) (r.getX() + r.getWidth() * (float) i / 8.0f), r.getY() + 4.0f, r.getBottom() - 4.0f);
     for (int i = 1; i < 4; ++i)
@@ -125,9 +125,9 @@ void ScopeView::paintScope (Graphics& g)
             env.lineTo (x0 + w * (float) i / (float) (N - 1), envToY (frames[(size_t) i].env));
         env.lineTo (x0 + w, bot);
         env.closeSubPath();
-        g.setColour (neon::neonBlue.withAlpha (0.22f));
+        g.setColour (neon::neonGreen.withAlpha (0.22f));
         g.fillPath (env);
-        g.setColour (neon::neonBlue.withAlpha (0.75f));
+        g.setColour (neon::neonGreen.withAlpha (0.75f));
         g.strokePath (env, PathStrokeType (1.2f));
     }
     {
@@ -146,7 +146,7 @@ void ScopeView::paintScope (Graphics& g)
     }
 
     g.setFont (neon::makeFont (11.0f, Font::bold));
-    g.setColour (neon::neonBlue);
+    g.setColour (neon::neonGreen);
     g.drawText ("VOCAL", r.reduced (8.0f).removeFromTop (14.0f).removeFromLeft (60.0f), Justification::centredLeft);
     g.setColour (neon::neonPurple);
     g.drawText ("ECHO LEVEL", r.reduced (8.0f).removeFromTop (14.0f).withTrimmedLeft (60.0f).removeFromLeft (100.0f), Justification::centredLeft);
@@ -162,6 +162,35 @@ void ScopeView::paintScope (Graphics& g)
                 r.reduced (8.0f).removeFromBottom (14.0f).removeFromRight (90.0f), Justification::bottomRight);
 }
 
+void ScopeView::updateSpectrum()
+{
+    for (auto& s : spectrum) s *= 0.80f;   // slow decay -> falling bars
+    if (! proc.analyzerReady()) return;
+
+    const int fftSize = DextroDelayAudioProcessor::kFftSize;
+    float* data = proc.analyzerData();
+    window.multiplyWithWindowingTable (data, (size_t) fftSize);
+    forwardFFT.performFrequencyOnlyForwardTransform (data);
+
+    double sr = proc.getSampleRate();
+    if (sr < 8000.0) sr = 44100.0;
+
+    for (int bar = 0; bar < kBars; ++bar)
+    {
+        const float f0 = fMin * std::pow (fMax / fMin, (float)  bar      / (float) kBars);
+        const float f1 = fMin * std::pow (fMax / fMin, (float) (bar + 1) / (float) kBars);
+        int b0 = jlimit (1, fftSize / 2 - 1, (int) (f0 * (float) fftSize / (float) sr));
+        int b1 = jlimit (b0 + 1, fftSize / 2, (int) (f1 * (float) fftSize / (float) sr) + 1);
+        float mag = 0.0f;
+        for (int bin = b0; bin < b1; ++bin) mag = jmax (mag, data[bin]);
+        const float amp = mag / (float) (fftSize * 0.5f) * 2.0f;
+        const float db  = Decibels::gainToDecibels (amp, -100.0f);
+        const float lvl = jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+        spectrum[(size_t) bar] = jmax (spectrum[(size_t) bar], lvl);   // fast rise
+    }
+    proc.clearAnalyzerReady();
+}
+
 void ScopeView::paintEq (Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
@@ -171,6 +200,35 @@ void ScopeView::paintEq (Graphics& g)
     double sr = proc.getSampleRate();
     if (sr < 8000.0) sr = 44100.0;
 
+    // --- reactive cube-pixel spectrum (green bottom -> blue mid -> purple top) ---
+    updateSpectrum();
+    {
+        const int   cols = kBars;
+        const int   rows = 15;
+        const float gap  = 2.4f;
+        const float colW = (a.getWidth()  - gap * (float) (cols - 1)) / (float) cols;
+        const float rowH = (a.getHeight() - gap * (float) (rows - 1)) / (float) rows;
+        const Colour green (0xff2bff6a), blue (0xff2f7bff);
+        auto blockCol = [&] (float t) -> Colour
+        {
+            return t < 0.5f ? green.interpolatedWith (blue, t * 2.0f)
+                            : blue.interpolatedWith (neon::neonPurple, (t - 0.5f) * 2.0f);
+        };
+        for (int c = 0; c < cols; ++c)
+        {
+            const int   lit = (int) std::round (spectrum[(size_t) c] * (float) rows);
+            const float x   = a.getX() + (float) c * (colW + gap);
+            for (int row = 0; row < lit; ++row)
+            {
+                const float t = (float) row / (float) (rows - 1);
+                const float y = a.getBottom() - (float) (row + 1) * rowH - (float) row * gap;
+                const bool  top = (row == lit - 1);
+                g.setColour (blockCol (t).withAlpha (top ? 0.95f : 0.5f));
+                g.fillRoundedRectangle (Rectangle<float> (x, y, colW, rowH), 1.6f);
+            }
+        }
+    }
+
     // --- grid + labels ---
     g.setFont (neon::makeFont (9.5f, Font::plain));
     const float freqTicks[] { 100.0f, 1000.0f, 10000.0f };
@@ -178,7 +236,7 @@ void ScopeView::paintEq (Graphics& g)
     for (int i = 0; i < 3; ++i)
     {
         const float x = freqToX (freqTicks[i]);
-        g.setColour (neon::neonBlue.withAlpha (0.10f));
+        g.setColour (neon::neonGreen.withAlpha (0.10f));
         g.drawVerticalLine ((int) x, a.getY(), a.getBottom());
         g.setColour (neon::textDim.withAlpha (0.7f));
         g.drawText (freqLbls[i], Rectangle<float> (x - 16.0f, a.getBottom() - 12.0f, 32.0f, 12.0f), Justification::centred);
@@ -186,7 +244,7 @@ void ScopeView::paintEq (Graphics& g)
     for (int db = -12; db <= 12; db += 6)
     {
         const float y = gainToY ((float) db);
-        g.setColour ((db == 0 ? neon::textDim.withAlpha (0.35f) : neon::neonBlue.withAlpha (0.08f)));
+        g.setColour ((db == 0 ? neon::textDim.withAlpha (0.35f) : neon::neonGreen.withAlpha (0.08f)));
         g.drawHorizontalLine ((int) y, a.getX(), a.getRight());
         if (db != 0)
         {
@@ -230,7 +288,7 @@ void ScopeView::paintEq (Graphics& g)
     for (int b = 0; b < dxeq::kNumBands; ++b)
     {
         const bool shelf = (cfg[(size_t) b].type != dxeq::Type::Peak);
-        const auto col = shelf ? neon::neonPurple : neon::neonBlue;
+        const auto col = shelf ? neon::neonPurple : neon::neonGreen;
         const float x = freqToX (bf[b]);
         const float y = gainToY (bg[b]);
         const bool hot = (b == dragBand || b == hoverBand);
@@ -370,8 +428,8 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
     pingpong.getProperties().set ("neonBlack", true);
     pingpong.getProperties().set ("neonPink", false);   // blue idle border (delay section)
     pingpong.getProperties().set ("onCyan", true);
-    pingpong.setColour (TextButton::textColourOffId, neon::neonBlue);
-    pingpong.setColour (TextButton::textColourOnId, neon::neonBlue.brighter (0.4f));
+    pingpong.setColour (TextButton::textColourOffId, neon::neonGreen);
+    pingpong.setColour (TextButton::textColourOnId, neon::neonGreen.brighter (0.4f));
     addAndMakeVisible (pingpong);
     pingAtt = std::make_unique<AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "pingpong", pingpong);
 
@@ -379,8 +437,8 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
     syncBtn.setClickingTogglesState (true);
     syncBtn.getProperties().set ("neonBlack", true);
     syncBtn.getProperties().set ("neonPink", false);
-    syncBtn.setColour (TextButton::textColourOffId, neon::neonBlue);
-    syncBtn.setColour (TextButton::textColourOnId, neon::neonBlue.brighter (0.4f));
+    syncBtn.setColour (TextButton::textColourOffId, neon::neonGreen);
+    syncBtn.setColour (TextButton::textColourOnId, neon::neonGreen.brighter (0.4f));
     addAndMakeVisible (syncBtn);
     syncAtt = std::make_unique<AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "sync", syncBtn);
 
@@ -388,7 +446,7 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
     divKnob = std::make_unique<Slider> (Slider::RotaryHorizontalVerticalDrag, Slider::TextBoxBelow);
     divKnob->setTextBoxStyle (Slider::TextBoxBelow, false, 74, 15);
     divKnob->getProperties().set ("glowPink", false);
-    divKnob->setColour (Slider::textBoxTextColourId, neon::neonBlue);
+    divKnob->setColour (Slider::textBoxTextColourId, neon::neonGreen);
     addChildComponent (*divKnob);
     divAtt = std::make_unique<AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "division", *divKnob);
 
@@ -401,9 +459,24 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
     addAndMakeVisible (eqBtn);
     eqAtt = std::make_unique<AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "eqon", eqBtn);
 
+    // Input pan — horizontal green slider centered in the top bar.
+    panSlider.setSliderStyle (Slider::LinearHorizontal);
+    panSlider.setTextBoxStyle (Slider::TextBoxRight, false, 40, 16);
+    panSlider.setColour (Slider::textBoxTextColourId, neon::neonGreen);
+    panSlider.setColour (Slider::textBoxOutlineColourId, Colours::transparentBlack);
+    panSlider.setDoubleClickReturnValue (true, 0.0);
+    addAndMakeVisible (panSlider);
+    panAtt = std::make_unique<AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, "inpan", panSlider);
+
+    panLabel.setText ("INPUT PAN", dontSendNotification);
+    panLabel.setJustificationType (Justification::centred);
+    panLabel.setFont (neon::makeFont (10.5f, Font::bold));
+    panLabel.setColour (Label::textColourId, neon::neonGreen);
+    addAndMakeVisible (panLabel);
+
     // Knob bank. Blue = delay/time domain, purple = self-duck/dynamics.
     const std::array<KnobSpec, 12> specs {{
-        { "time",     "TIME",      false }, { "offset",  "R OFFSET",  false },
+        { "time",     "TIME",      false }, { "offset",  "L/R OFFSET", false },
         { "feedback", "FEEDBACK",  false }, { "tone",    "TONE",      false },
         { "lowcut",   "LOW CUT",   false }, { "width",   "WIDTH",     false },
         { "duck",     "DUCK",      true  }, { "thresh",  "THRESHOLD", true  },
@@ -438,14 +511,14 @@ void DextroDelayAudioProcessorEditor::addKnob (const KnobSpec& spec)
     auto knob = std::make_unique<Slider> (Slider::RotaryHorizontalVerticalDrag, Slider::TextBoxBelow);
     knob->setTextBoxStyle (Slider::TextBoxBelow, false, 74, 15);
     knob->getProperties().set ("glowPink", spec.purple);
-    knob->setColour (Slider::textBoxTextColourId, spec.purple ? neon::neonPurple : neon::neonBlue);
+    knob->setColour (Slider::textBoxTextColourId, spec.purple ? neon::neonPurple : neon::neonGreen);
     addAndMakeVisible (*knob);
     attachments.push_back (std::make_unique<AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, spec.id, *knob));
 
     auto label = std::make_unique<Label> (juce::String(), spec.label);
     label->setJustificationType (Justification::centred);
     label->setFont (neon::makeFont (11.5f, Font::bold));
-    label->setColour (Label::textColourId, spec.purple ? neon::neonBlue : neon::neonPurple);
+    label->setColour (Label::textColourId, spec.purple ? neon::neonGreen : neon::neonPurple);
     addAndMakeVisible (*label);
 
     knobs.push_back (std::move (knob));
@@ -473,7 +546,7 @@ void DextroDelayAudioProcessorEditor::paint (Graphics& g)
     if (faceplate.isValid())
         g.drawImage (faceplate, plate, RectanglePlacement::stretchToFit);
     neon::glowRoundedRect (g, plate, 16.0f, neon::neonPurple, 0.5f + 0.35f * rimGlow, 5);
-    g.setColour (neon::neonBlue.withAlpha (0.18f * rimGlow));
+    g.setColour (neon::neonGreen.withAlpha (0.18f * rimGlow));
     g.drawRoundedRectangle (plate.reduced (2.0f), 14.0f, 1.0f);
 
     // Title.
@@ -487,22 +560,19 @@ void DextroDelayAudioProcessorEditor::paint (Graphics& g)
         }
         g.setColour (neon::neonPurple.brighter (0.35f));
         g.drawText ("DEXTRO DELAY", tRect, Justification::centredLeft);
-        g.setFont (neon::makeFont (11.0f, Font::bold));
-        g.setColour (neon::neonBlue.withAlpha (0.9f));
-        g.drawText ("SELF-DUCKING DELAY", tRect.translated (2.0f, 24.0f), Justification::centredLeft);
     }
 
     // Wave box neon border (the scope glass sits inside).
     neon::glowRoundedRect (g, wavePanel.toFloat(), 8.0f, neon::neonPurple, 0.5f + 0.3f * rimGlow, 4);
 
     // DELAY panel (blue).
-    neon::drawInsetPanel (g, delayPanel.toFloat(), 10.0f, neon::neonBlue, 0.7f);
+    neon::drawInsetPanel (g, delayPanel.toFloat(), 10.0f, neon::neonGreen, 0.7f);
     // DYNAMICS panel (purple).
     neon::drawInsetPanel (g, dynPanel.toFloat(), 10.0f, neon::neonPurple, 0.7f);
 
     // Panel headers.
     g.setFont (neon::makeFont (12.0f, Font::bold));
-    g.setColour (neon::neonBlue);
+    g.setColour (neon::neonGreen);
     g.drawText ("DELAY  ///  ECHO", Rectangle<float> (delayPanel.getX() + 12.0f, delayPanel.getY() + 7.0f, 240.0f, 16.0f), Justification::centredLeft);
     g.setColour (neon::neonPurple);
     g.drawText ("SELF-DUCK  ///  DYNAMICS + OUTPUT", Rectangle<float> (dynPanel.getX() + 12.0f, dynPanel.getY() + 7.0f, 320.0f, 16.0f), Justification::centredLeft);
@@ -527,6 +597,17 @@ void DextroDelayAudioProcessorEditor::resized()
     auto plate = b.reduced (14);
     const int x0 = plate.getX() + 18;
     const int w  = plate.getWidth() - 36;
+
+    // Input pan, centered in the empty top-bar space between title and logo.
+    {
+        const int panW = 214, panH = 40;
+        const int regionL = plate.getX() + 392;
+        const int regionR = plate.getRight() - 150;
+        const int cx = (regionL + regionR) / 2;
+        panArea = { cx - panW / 2, plate.getY() + 8, panW, panH };
+        panLabel.setBounds (panArea.getX(), panArea.getY(), panArea.getWidth(), 13);
+        panSlider.setBounds (panArea.getX() + 12, panArea.getY() + 14, panArea.getWidth() - 12, 24);
+    }
 
     // Wave box (double height — a big EQ / scope screen).
     const int waveY = plate.getY() + 60;

@@ -31,6 +31,19 @@ int main (int argc, char** argv)
         set ("eqgain2", 4.0f);    set ("eqfreq2", 1200.0f);  set ("eqq2", 1.4f);   // presence
         set ("eqgain3", -3.0f);   set ("eqfreq3", 3500.0f);  set ("eqq3", 4.5f);   // surgical notch
         set ("eqgain4", 7.0f);    set ("eqfreq4", 9000.0f);  set ("eqq4", 0.7f);   // air
+
+        // Feed white noise so the analyzer has a ready block for the render.
+        juce::Random rng (1234);
+        juce::AudioBuffer<float> buf (2, 512);
+        juce::MidiBuffer midi;
+        auto feed = [&] { for (int ch = 0; ch < 2; ++ch)
+                              for (int i = 0; i < buf.getNumSamples(); ++i)
+                                  buf.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.3f);
+                          proc.processBlock (buf, midi); };
+
+        for (int k = 0; k < 120; ++k) feed();     // prime the delay / feedback with echoes
+        proc.clearAnalyzerReady();
+        for (int k = 0; k < 4; ++k) feed();        // one clean 2048-sample crossing -> ready
     }
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc.createEditor());

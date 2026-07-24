@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 #include <array>
 #include <vector>
 
@@ -35,6 +36,7 @@ private:
     bool eqMode() const;
     void paintScope (juce::Graphics&);
     void paintEq    (juce::Graphics&);
+    void updateSpectrum();
 
     juce::Rectangle<float> plot() const;
     float freqToX (float hz) const;
@@ -54,6 +56,13 @@ private:
     juce::RangedAudioParameter* qP   [dxeq::kNumBands] { };
 
     static constexpr float fMin = 20.0f, fMax = 20000.0f;
+
+    // Reactive spectrum analyzer (cube-pixel bars behind the EQ curve).
+    static constexpr int kBars = 30;
+    juce::dsp::FFT forwardFFT { DextroDelayAudioProcessor::kFftOrder };
+    juce::dsp::WindowingFunction<float> window
+        { (size_t) DextroDelayAudioProcessor::kFftSize, juce::dsp::WindowingFunction<float>::hann };
+    std::array<float, kBars> spectrum { };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScopeView)
 };
@@ -103,6 +112,12 @@ private:
     // EQ toggle on the wave box.
     juce::TextButton eqBtn { "EQ" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqAtt;
+
+    // Input pan — horizontal green slider centered in the top bar.
+    juce::Slider panSlider;
+    juce::Label  panLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAtt;
+    juce::Rectangle<int> panArea;
 
     // Panel rectangles (set in resized, drawn in paint).
     juce::Rectangle<int> delayPanel, dynPanel, wavePanel;

@@ -167,6 +167,56 @@ public:
                            float sliderPos, float, float,
                            juce::Slider::SliderStyle style, juce::Slider&) override
     {
+        // Horizontal green tube (same neon-tube language as the vertical fader,
+        // but a single green hue) — used for the input-pan control.
+        if (style == juce::Slider::LinearHorizontal)
+        {
+            const float cy = (float) y + (float) h * 0.5f;
+            const float tubeH = 8.0f;
+            auto slot = juce::Rectangle<float> ((float) x, cy - tubeH * 0.5f, (float) w, tubeH);
+            const float rad = tubeH * 0.5f;
+
+            g.setColour (juce::Colours::black.withAlpha (0.7f));
+            g.fillRoundedRectangle (slot.expanded (3.0f), rad + 3.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.06f));
+            g.drawRoundedRectangle (slot.expanded (3.5f), rad + 3.5f, 1.0f);
+
+            for (int i = 4; i >= 1; --i)
+            {
+                g.setColour (neon::neonGreen.withAlpha (0.05f * (float) (5 - i)));
+                g.fillRoundedRectangle (slot.expanded ((float) i * 2.0f), rad + (float) i * 2.0f);
+            }
+            g.setColour (neon::neonGreen.brighter (0.35f));
+            g.fillRoundedRectangle (slot, rad);
+            auto core = slot.reduced (2.3f);
+            g.setColour (juce::Colour (0xff050507));
+            g.fillRoundedRectangle (core, juce::jmax (0.5f, rad - 2.3f));
+
+            // Centre detent tick.
+            g.setColour (juce::Colours::white.withAlpha (0.18f));
+            g.fillRect (juce::Rectangle<float> ((float) x + (float) w * 0.5f - 0.5f, cy - tubeH, 1.0f, tubeH * 2.0f));
+
+            // Black cap with a green neon outline + bloom.
+            auto cap = juce::Rectangle<float> (sliderPos - 11.0f, cy - 14.0f, 22.0f, 28.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.65f));
+            g.fillRoundedRectangle (cap.translated (0.0f, 2.0f).expanded (1.0f), 6.0f);
+            for (int i = 4; i >= 1; --i)
+            {
+                g.setColour (neon::neonGreen.withAlpha (0.07f * (float) (5 - i)));
+                g.drawRoundedRectangle (cap.expanded ((float) i * 1.3f), 6.0f + (float) i, 1.8f);
+            }
+            juce::ColourGradient body (juce::Colour (0xff2a2c34), cap.getX(), cap.getY(),
+                                       juce::Colour (0xff090a0e), cap.getX(), cap.getBottom(), false);
+            body.addColour (0.14, juce::Colour (0xff40434e));
+            g.setGradientFill (body);
+            g.fillRoundedRectangle (cap, 5.5f);
+            g.setColour (neon::neonGreen.withAlpha (0.95f));
+            g.drawRoundedRectangle (cap, 5.5f, 1.6f);
+            g.setColour (neon::neonGreen.withAlpha (0.85f));
+            g.fillRect (juce::Rectangle<float> (cap.getCentreX() - 1.0f, cap.getY() + 5.0f, 2.0f, cap.getHeight() - 10.0f));
+            return;
+        }
+
         if (style != juce::Slider::LinearVertical)
             return;
 

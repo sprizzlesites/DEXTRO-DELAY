@@ -52,7 +52,7 @@ public:
         float outputGainDb = 0.0f;
     };
 
-    void prepare (double sampleRate, int /*maxBlock*/)
+    void prepare (double sampleRate, int maxBlock)
     {
         sr = (sampleRate > 0.0 ? sampleRate : 44100.0);
 
@@ -60,6 +60,9 @@ public:
         bufLen = std::max (maxDelaySamples, 64);
         bufL.assign ((size_t) bufLen, 0.0f);
         bufR.assign ((size_t) bufLen, 0.0f);
+
+        wetMonoBuf.assign ((size_t) std::max (64, maxBlock), 0.0f);
+        wetMonoN = 0;
 
         reset();
         recomputeCoeffs();
@@ -91,6 +94,8 @@ public:
     // Process one interleaved-by-pointer stereo block, in place.
     void process (float* left, float* right, int numSamples)
     {
+        if ((int) wetMonoBuf.size() < numSamples) wetMonoBuf.assign ((size_t) numSamples, 0.0f);
+        wetMonoN = numSamples;
         const float wet     = p.mix;
         const float dryGain = std::sqrt (1.0f - std::min (1.0f, wet));  // gentle crossfade
         const float wetGain = std::sqrt (std::min (1.0f, wet));
@@ -172,6 +177,10 @@ public:
                     wetR = eqR[b].process (wetR);
                 }
 
+            // Tap the EQ'd wet (pre-duck) so the analyzer always shows the EQ
+            // shaping clearly, independent of how hard the ducker is pulling.
+            wetMonoBuf[(size_t) n] = 0.5f * (wetL + wetR);
+
             wetL *= duckGain;
             wetR *= duckGain;
 
@@ -184,6 +193,10 @@ public:
     // --- metering (for the UI scope) ---------------------------------------
     float getDuckGain()  const { return duckGainMeter; }  // 1 = open, <1 = ducked
     float getInputEnv()  const { return inputEnvMeter; }   // linear dry envelope
+
+    // Wet signal (post duck + EQ) for the UI spectrum, valid for the last block.
+    const float* getWetMono() const { return wetMonoBuf.data(); }
+    int          getWetCount() const { return wetMonoN; }
 
 private:
     static float clamp01 (float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
@@ -261,6 +274,10 @@ private:
     // wet EQ (5 bands per channel)
     dxeq::Biquad eqL[dxeq::kNumBands];
     dxeq::Biquad eqR[dxeq::kNumBands];
+
+    // wet tap for the analyzer
+    std::vector<float> wetMonoBuf;
+    int wetMonoN = 0;
 
     // ducking state
     float detEnv = 0.0f;
