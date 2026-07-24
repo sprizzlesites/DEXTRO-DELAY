@@ -1,0 +1,123 @@
+name: Build DextroDelay
+
+# Full three-OS matrix (Windows + macOS + Linux), each gated on pluginval host
+# validation before an artifact is published. Manual trigger only — Actions
+# minutes cost money, and macOS runners bill at 10x, so builds are launched
+# deliberately from the Actions tab, never automatically on push.
+#
+# Prefer building Windows LOCALLY (see the local cross-build flow) and using
+# the focused macos-vst3.yml for a Mac-only build; reach for this full matrix
+# when you genuinely need all three signed/validated at once.
+#
+# Replace DextroDelay with the JUCE target name. Artefact dir = "<Target>_artefacts".
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            cmake_extra: ''
+          - name: macOS
+            os: macos-latest
+            cmake_extra: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          - name: Linux
+            os: ubuntu-latest
+            cmake_extra: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev \
+            libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxcomposite-dev libxrender-dev \
+            libfreetype6-dev libfontconfig1-dev libglu1-mesa-dev mesa-common-dev xvfb
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: juce-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_extra }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      # Hard gate: the built VST3 must load and instantiate in a real host
+      # (pluginval) before we ship an artifact.
+      - name: Validate VST3 loads (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          curl -sSLO https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip
+          Expand-Archive pluginval_Windows.zip -DestinationPath pluginval
+          ./pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --verbose `
+            --validate "build/DextroDelay_artefacts/Release/VST3/DextroDelay.vst3"
+
+      - name: Validate VST3 loads (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -sSLO https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip
+          unzip -q pluginval_macOS.zip -d pluginval
+          ./pluginval/pluginval.app/Contents/MacOS/pluginval \
+            --strictness-level 5 --skip-gui-tests --verbose \
+            --validate "build/DextroDelay_artefacts/Release/VST3/DextroDelay.vst3"
+
+      - name: Validate VST3 loads (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -sSLO https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Linux.zip
+          unzip -q pluginval_Linux.zip -d pluginval
+          xvfb-run -a ./pluginval/pluginval \
+            --strictness-level 5 --skip-gui-tests --verbose \
+            --validate "build/DextroDelay_artefacts/Release/VST3/DextroDelay.vst3"
+
+      # Ad-hoc sign on macOS (required for the bundle to load on Apple Silicon).
+      # With Developer ID secrets configured you can extend this to a full
+      # codesign + notarytool + stapler flow.
+      - name: Ad-hoc sign (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - "build/DextroDelay_artefacts/Release/VST3/DextroDelay.vst3"
+
+      # upload-artifact strips unix permissions and symlinks, so each OS packs
+      # its own archive first; the download then extracts to a working binary.
+      - name: Stage artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force staging | Out-Null
+          Compress-Archive -Path "build/DextroDelay_artefacts/Release/VST3/DextroDelay.vst3" `
+                           -DestinationPath "staging/DextroDelay-VST3-Windows.zip"
+
+      - name: Stage artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p staging
+          ditto -c -k --keepParent "build/DextroDelay_artefacts/Release/VST3/DextroDelay.vst3" \
+            "staging/DextroDelay-VST3-macOS.zip"
+
+      - name: Stage artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p staging
+          tar -C "build/DextroDelay_artefacts/Release/VST3" -czf "staging/DextroDelay-VST3-Linux.tar.gz" DextroDelay.vst3
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: DextroDelay-${{ matrix.name }}
+          path: staging/
+          if-no-files-found: error

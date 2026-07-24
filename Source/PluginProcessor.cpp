@@ -1,0 +1,216 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+
+#include <cstring>
+#include <vector>
+
+//==============================================================================
+namespace pid
+{
+    static const juce::String time     = "time";
+    static const juce::String offset   = "offset";
+    static const juce::String feedback = "feedback";
+    static const juce::String tone     = "tone";
+    static const juce::String lowcut   = "lowcut";
+    static const juce::String width    = "width";
+    static const juce::String duck     = "duck";
+    static const juce::String thresh   = "thresh";
+    static const juce::String attack   = "attack";
+    static const juce::String release  = "release";
+    static const juce::String mix      = "mix";
+    static const juce::String output   = "output";
+    static const juce::String pingpong = "pingpong";
+}
+
+//==============================================================================
+DextroDelayAudioProcessor::DextroDelayAudioProcessor()
+    : AudioProcessor (BusesProperties()
+                          .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "PARAMS", createLayout())
+{
+    for (auto& a : scopeEnv)  a.store (0.0f);
+    for (auto& a : scopeDuck) a.store (1.0f);
+}
+
+//==============================================================================
+juce::AudioProcessorValueTreeState::ParameterLayout DextroDelayAudioProcessor::createLayout()
+{
+    using P    = juce::AudioParameterFloat;
+    using R    = juce::NormalisableRange<float>;
+    using Attr = juce::AudioParameterFloatAttributes;
+
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    auto ms   = [] (float v) { return juce::String (v, v < 100.0f ? 1 : 0) + " ms"; };
+    auto hz   = [] (float v) { return v >= 1000.0f ? juce::String (v / 1000.0f, 1) + " kHz"
+                                                    : juce::String (v, 0) + " Hz"; };
+    auto pct  = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; };
+    auto db   = [] (float v) { return juce::String (v, 1) + " dB"; };
+
+    params.push_back (std::make_unique<P> (pid::time, "Time",
+        R (5.0f, 2000.0f, 0.01f, 0.3f), 380.0f,
+        Attr().withStringFromValueFunction ([ms] (float v, int) { return ms (v); })));
+
+    params.push_back (std::make_unique<P> (pid::offset, "R Offset",
+        R (0.0f, 250.0f, 0.01f, 0.5f), 0.0f,
+        Attr().withStringFromValueFunction ([ms] (float v, int) { return ms (v); })));
+
+    params.push_back (std::make_unique<P> (pid::feedback, "Feedback",
+        R (0.0f, 0.98f, 0.001f), 0.45f,
+        Attr().withStringFromValueFunction ([pct] (float v, int) { return pct (v); })));
+
+    params.push_back (std::make_unique<P> (pid::tone, "Tone",
+        R (500.0f, 18000.0f, 1.0f, 0.3f), 6500.0f,
+        Attr().withStringFromValueFunction ([hz] (float v, int) { return hz (v); })));
+
+    params.push_back (std::make_unique<P> (pid::lowcut, "Low Cut",
+        R (20.0f, 1000.0f, 1.0f, 0.5f), 120.0f,
+        Attr().withStringFromValueFunction ([hz] (float v, int) { return hz (v); })));
+
+    params.push_back (std::make_unique<P> (pid::width, "Width",
+        R (0.0f, 1.0f, 0.001f), 1.0f,
+        Attr().withStringFromValueFunction ([pct] (float v, int) { return pct (v); })));
+
+    params.push_back (std::make_unique<P> (pid::duck, "Duck",
+        R (0.0f, 36.0f, 0.1f), 18.0f,
+        Attr().withStringFromValueFunction ([db] (float v, int) { return db (v); })));
+
+    params.push_back (std::make_unique<P> (pid::thresh, "Threshold",
+        R (-60.0f, 0.0f, 0.1f), -32.0f,
+        Attr().withStringFromValueFunction ([db] (float v, int) { return db (v); })));
+
+    params.push_back (std::make_unique<P> (pid::attack, "Attack",
+        R (1.0f, 150.0f, 0.1f, 0.5f), 12.0f,
+        Attr().withStringFromValueFunction ([ms] (float v, int) { return ms (v); })));
+
+    params.push_back (std::make_unique<P> (pid::release, "Release",
+        R (20.0f, 2000.0f, 1.0f, 0.4f), 320.0f,
+        Attr().withStringFromValueFunction ([ms] (float v, int) { return ms (v); })));
+
+    params.push_back (std::make_unique<P> (pid::mix, "Mix",
+        R (0.0f, 1.0f, 0.001f), 0.35f,
+        Attr().withStringFromValueFunction ([pct] (float v, int) { return pct (v); })));
+
+    params.push_back (std::make_unique<P> (pid::output, "Output",
+        R (-24.0f, 12.0f, 0.1f), 0.0f,
+        Attr().withStringFromValueFunction ([db] (float v, int) { return db (v); })));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        pid::pingpong, "Ping-Pong", false));
+
+    return { params.begin(), params.end() };
+}
+
+//==============================================================================
+void DextroDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+{
+    engine.prepare (sampleRate, samplesPerBlock);
+    scopeDecimN = juce::jmax (1, (int) (sampleRate / 1500.0));   // ~1500 frames/sec
+    scopeDecim  = 0;
+}
+
+bool DextroDelayAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    const auto& in  = layouts.getMainInputChannelSet();
+    const auto& out = layouts.getMainOutputChannelSet();
+    if (in != out) return false;
+    return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
+}
+
+//==============================================================================
+void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
+                                              juce::MidiBuffer&)
+{
+    juce::ScopedNoDenormals noDenormals;
+
+    const int numCh = buffer.getNumChannels();
+    const int n     = buffer.getNumSamples();
+
+    // Pull parameters and map into the engine.
+    DuckingDelay::Params p;
+    const float t   = apvts.getRawParameterValue (pid::time)->load();
+    const float off = apvts.getRawParameterValue (pid::offset)->load();
+    p.delayMsL      = t;
+    p.delayMsR      = juce::jmin (2000.0f, t + off);
+    p.feedback      = apvts.getRawParameterValue (pid::feedback)->load();
+    p.dampHz        = apvts.getRawParameterValue (pid::tone)->load();
+    p.lowCutHz      = apvts.getRawParameterValue (pid::lowcut)->load();
+    p.width         = apvts.getRawParameterValue (pid::width)->load();
+    p.duckDepthDb   = apvts.getRawParameterValue (pid::duck)->load();
+    p.thresholdDb   = apvts.getRawParameterValue (pid::thresh)->load();
+    p.attackMs      = apvts.getRawParameterValue (pid::attack)->load();
+    p.releaseMs     = apvts.getRawParameterValue (pid::release)->load();
+    p.mix           = apvts.getRawParameterValue (pid::mix)->load();
+    p.outputGainDb  = apvts.getRawParameterValue (pid::output)->load();
+    p.pingpong      = apvts.getRawParameterValue (pid::pingpong)->load() > 0.5f;
+    engine.setParams (p);
+
+    if (numCh >= 2)
+    {
+        engine.process (buffer.getWritePointer (0), buffer.getWritePointer (1), n);
+    }
+    else if (numCh == 1)
+    {
+        // Mono: duplicate into a scratch right channel, process, take the left.
+        juce::HeapBlock<float> tmp (n);
+        auto* l = buffer.getWritePointer (0);
+        std::memcpy (tmp.get(), l, sizeof (float) * (size_t) n);
+        engine.process (l, tmp.get(), n);
+    }
+
+    // Feed the scope ring (decimated) so the UI can draw env + duck history.
+    const float env  = engine.getInputEnv();
+    const float duck = engine.getDuckGain();
+    currentDuck.store (duck);
+    for (int i = 0; i < n; ++i)
+    {
+        if (++scopeDecim >= scopeDecimN)
+        {
+            scopeDecim = 0;
+            int h = scopeHead.load (std::memory_order_relaxed);
+            scopeEnv[(size_t) h].store (env,  std::memory_order_relaxed);
+            scopeDuck[(size_t) h].store (duck, std::memory_order_relaxed);
+            scopeHead.store ((h + 1) % kScopeSize, std::memory_order_release);
+        }
+    }
+}
+
+//==============================================================================
+int DextroDelayAudioProcessor::readScope (std::array<ScopeFrame, kScopeSize>& out) const
+{
+    const int head = scopeHead.load (std::memory_order_acquire);
+    for (int i = 0; i < kScopeSize; ++i)
+    {
+        const int idx = (head + i) % kScopeSize;   // oldest -> newest
+        out[(size_t) i].env  = scopeEnv[(size_t) idx].load (std::memory_order_relaxed);
+        out[(size_t) i].duck = scopeDuck[(size_t) idx].load (std::memory_order_relaxed);
+    }
+    return head;
+}
+
+//==============================================================================
+juce::AudioProcessorEditor* DextroDelayAudioProcessor::createEditor()
+{
+    return new DextroDelayAudioProcessorEditor (*this);
+}
+
+//==============================================================================
+void DextroDelayAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    if (auto xml = apvts.copyState().createXml())
+        copyXmlToBinary (*xml, destData);
+}
+
+void DextroDelayAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        if (xml->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+}
+
+//==============================================================================
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new DextroDelayAudioProcessor();
+}

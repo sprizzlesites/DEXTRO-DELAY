@@ -1,0 +1,16 @@
+# Build directories (JUCE is fetched here; nothing to commit)
+/build/
+/build-win/
+/build-*/
+
+# CMake local files
+CMakeCache.txt
+CMakeFiles/
+
+# Editor / OS cruft
+.DS_Store
+*.swp
+
+# Local render/test output
+*.wav
+!Assets/**/*.wav
