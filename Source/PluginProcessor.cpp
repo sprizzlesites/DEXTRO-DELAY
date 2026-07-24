@@ -22,6 +22,9 @@ namespace pid
     static const juce::String mix      = "mix";
     static const juce::String output   = "output";
     static const juce::String pingpong = "pingpong";
+    static const juce::String eqon     = "eqon";
+    static juce::String eqFreq (int i) { return "eqfreq" + juce::String (i); }
+    static juce::String eqGain (int i) { return "eqgain" + juce::String (i); }
 }
 
 namespace synced
@@ -124,6 +127,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout DextroDelayAudioProcessor::c
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         pid::pingpong, "Ping-Pong", false));
 
+    // --- 5-point wet EQ ---
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        pid::eqon, "EQ On", false));
+
+    const auto& eqCfg = dxeq::bands();
+    for (int b = 0; b < dxeq::kNumBands; ++b)
+    {
+        params.push_back (std::make_unique<P> (pid::eqFreq (b), "EQ " + juce::String (b + 1) + " Freq",
+            R (eqCfg[(size_t) b].minFreq, eqCfg[(size_t) b].maxFreq, 1.0f, 0.3f),
+            eqCfg[(size_t) b].defFreq,
+            Attr().withStringFromValueFunction ([hz] (float v, int) { return hz (v); })));
+
+        params.push_back (std::make_unique<P> (pid::eqGain (b), "EQ " + juce::String (b + 1) + " Gain",
+            R (-dxeq::kMaxGainDb, dxeq::kMaxGainDb, 0.1f), 0.0f,
+            Attr().withStringFromValueFunction ([db] (float v, int) { return db (v); })));
+    }
+
     return { params.begin(), params.end() };
 }
 
@@ -182,6 +202,12 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     p.mix           = apvts.getRawParameterValue (pid::mix)->load();
     p.outputGainDb  = apvts.getRawParameterValue (pid::output)->load();
     p.pingpong      = apvts.getRawParameterValue (pid::pingpong)->load() > 0.5f;
+    p.eqOn          = apvts.getRawParameterValue (pid::eqon)->load() > 0.5f;
+    for (int b = 0; b < dxeq::kNumBands; ++b)
+    {
+        p.eqFreq[b] = apvts.getRawParameterValue (pid::eqFreq (b))->load();
+        p.eqGain[b] = apvts.getRawParameterValue (pid::eqGain (b))->load();
+    }
     engine.setParams (p);
 
     if (numCh >= 2)

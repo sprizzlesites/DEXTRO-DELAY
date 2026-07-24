@@ -223,7 +223,43 @@ int main (int argc, char** argv)
     if (! (peak > 0.01)) { std::fprintf (stderr, "FAIL: output silent/degenerate (peak %.4f)\n", peak); ok = false; }
     std::printf ("output peak: %.3f\n", peak);
 
-    std::printf ("\n%s\n", ok ? "PASS: self-ducking delay verified (echoes duck under the vocal, swell in the gaps)."
+    // ---- wet EQ: transparency (flat) + effect (boost) + stability ----
+    {
+        const int M = std::min (n, (int) (sr * 20.0));   // first ~20 s is plenty
+        auto runEq = [&] (bool eqOn, int band, float gainDb, double& outPeak, double& outRms)
+        {
+            DuckingDelay::Params ep = p;
+            ep.eqOn = eqOn;
+            for (int b = 0; b < dxeq::kNumBands; ++b) ep.eqGain[b] = 0.0f;
+            if (band >= 0) ep.eqGain[band] = gainDb;
+            DuckingDelay e; e.prepare (sr, 512); e.setParams (ep);
+            std::vector<float> l (M), r (M);
+            for (int i = 0; i < M; ++i) { l[i] = in.L[i]; r[i] = in.R[i]; }
+            for (int i = 0; i < M; i += block) e.process (&l[i], &r[i], std::min (block, M - i));
+            double pk = 0, e2 = 0;
+            for (int i = 0; i < M; ++i) { pk = std::max (pk, (double) std::fabs (l[i])); e2 += (double) l[i] * l[i]; if (! std::isfinite (l[i]) || ! std::isfinite (r[i])) pk = 1e9; }
+            outPeak = pk; outRms = std::sqrt (e2 / std::max (1, M));
+        };
+
+        double offPk, offRms, flatPk, flatRms, boostPk, boostRms;
+        runEq (false, -1, 0.0f,  offPk,  offRms);
+        runEq (true,  -1, 0.0f,  flatPk, flatRms);
+        runEq (true,   2, 12.0f, boostPk, boostRms);   // band 2 = 1 kHz bell (vocal energy)
+
+        std::printf ("\n--- wet EQ ---\n");
+        std::printf ("eq off         : peak %.3f rms %.4f\n", offPk,  offRms);
+        std::printf ("eq flat (0 dB) : peak %.3f rms %.4f\n", flatPk, flatRms);
+        std::printf ("eq +12 @ 1 kHz : peak %.3f rms %.4f\n", boostPk, boostRms);
+
+        if (! (std::fabs (flatRms - offRms) < 0.02 * std::max (1e-6, offRms) + 1e-5))
+            { std::fprintf (stderr, "FAIL: flat EQ is not transparent\n"); ok = false; }
+        if (! (boostRms > flatRms * 1.02))
+            { std::fprintf (stderr, "FAIL: low-shelf boost did not add low-end energy\n"); ok = false; }
+        if (! (std::isfinite (boostPk) && boostPk < 4.0))
+            { std::fprintf (stderr, "FAIL: EQ produced non-finite / runaway output\n"); ok = false; }
+    }
+
+    std::printf ("\n%s\n", ok ? "PASS: self-ducking delay + wet EQ verified."
                               : "TEST FAILED");
     return ok ? 0 : 1;
 }

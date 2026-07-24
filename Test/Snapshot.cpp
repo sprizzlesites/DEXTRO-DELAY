@@ -16,8 +16,24 @@ int main (int argc, char** argv)
     DextroDelayAudioProcessor proc;
     proc.prepareToPlay (44100.0, 512);
 
+    // Optional 2nd arg "eq" turns the EQ on and shapes a demo curve so the
+    // editor's EQ mode can be captured.
+    if (argc > 2 && juce::String (argv[2]) == "eq")
+    {
+        auto set = [&] (const juce::String& id, float v)
+        {
+            if (auto* p = proc.apvts.getParameter (id))
+                p->setValueNotifyingHost (p->getNormalisableRange().convertTo0to1 (v));
+        };
+        set ("eqon", 1.0f);
+        set ("eqgain0", 6.0f);    set ("eqfreq0", 90.0f);     // low shelf up
+        set ("eqgain1", -5.0f);   set ("eqfreq1", 320.0f);    // low-mid dip
+        set ("eqgain2", 4.0f);    set ("eqfreq2", 1200.0f);   // presence
+        set ("eqgain3", -3.0f);   set ("eqfreq3", 3500.0f);
+        set ("eqgain4", 7.0f);    set ("eqfreq4", 9000.0f);   // air
+    }
+
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc.createEditor());
-    editor->setSize (780, 560);
 
     // Give the layout a chance to settle.
     editor->resized();

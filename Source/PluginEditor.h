@@ -6,11 +6,13 @@
 
 #include "PluginProcessor.h"
 #include "UI/NeonLookAndFeel.h"
+#include "DSP/Equalizer.h"
 
 //==============================================================================
-/** Live "screen" scope: draws the dry-vocal envelope (blue) and the duck-gain
-    history (purple) scrolling right-to-left, so you can watch the echoes get
-    pulled down under the vocal and swell back up in the gaps. */
+/** The "wave box" screen. Two modes, switched by the EQ toggle:
+      * SCOPE — the dry-vocal envelope (blue) vs the duck-gain history (purple),
+      * EQ    — an interactive 5-point EQ curve editor for the wet delay signal,
+                with draggable nodes writing straight to the parameters. */
 class ScopeView : public juce::Component,
                   private juce::Timer
 {
@@ -20,12 +22,36 @@ public:
 
     void paint (juce::Graphics&) override;
 
+    void mouseDown        (const juce::MouseEvent&) override;
+    void mouseDrag        (const juce::MouseEvent&) override;
+    void mouseUp          (const juce::MouseEvent&) override;
+    void mouseMove        (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+
 private:
     void timerCallback() override;
+
+    bool eqMode() const;
+    void paintScope (juce::Graphics&);
+    void paintEq    (juce::Graphics&);
+
+    juce::Rectangle<float> plot() const;
+    float freqToX (float hz) const;
+    float xToFreq (float x)  const;
+    float gainToY (float db) const;
+    float yToGain (float y)  const;
+    int   nodeAt  (juce::Point<float> pos) const;
 
     DextroDelayAudioProcessor& proc;
     std::array<DextroDelayAudioProcessor::ScopeFrame, DextroDelayAudioProcessor::kScopeSize> frames;
     float glowPhase = 0.0f;
+
+    int dragBand = -1;
+    int hoverBand = -1;
+    juce::RangedAudioParameter* freqP[dxeq::kNumBands] { };
+    juce::RangedAudioParameter* gainP[dxeq::kNumBands] { };
+
+    static constexpr float fMin = 20.0f, fMax = 20000.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScopeView)
 };
@@ -71,6 +97,13 @@ private:
     std::unique_ptr<juce::Slider> divKnob;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>  divAtt;
     int lastSyncState = -1;
+
+    // EQ toggle on the wave box.
+    juce::TextButton eqBtn { "EQ" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqAtt;
+
+    // Panel rectangles (set in resized, drawn in paint).
+    juce::Rectangle<int> delayPanel, dynPanel, wavePanel;
 
     float rimGlow = 0.0f;
     float glowPhase = 0.0f;

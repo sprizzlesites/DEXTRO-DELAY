@@ -19,6 +19,8 @@
 #include <cmath>
 #include <algorithm>
 
+#include "Equalizer.h"
+
 class DuckingDelay
 {
 public:
@@ -39,6 +41,11 @@ public:
         float thresholdDb = -32.0f;   // vocal level above which ducking engages
         float attackMs    = 12.0f;    // how fast the echoes duck when the vocal enters
         float releaseMs   = 320.0f;   // how fast the echoes rise back during silence
+
+        // --- wet EQ (5-point) ---
+        bool  eqOn = false;
+        float eqFreq[dxeq::kNumBands] { 100.0f, 300.0f, 1000.0f, 3500.0f, 9000.0f };
+        float eqGain[dxeq::kNumBands] { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
 
         // --- output ---
         float outputGainDb = 0.0f;
@@ -63,6 +70,7 @@ public:
         std::fill (bufR.begin(), bufR.end(), 0.0f);
         wIdx = 0;
         lpL = lpR = hpL = hpR = 0.0f;
+        for (int i = 0; i < dxeq::kNumBands; ++i) { eqL[i].reset(); eqR[i].reset(); }
         detEnv = 0.0f;
         duckGain = 1.0f;
         smDelayL = msToSamples (p.delayMsL);
@@ -155,6 +163,14 @@ public:
             wetL = mid + side;
             wetR = mid - side;
 
+            // 5-band EQ shapes the echo tone (before ducking controls its level)
+            if (p.eqOn)
+                for (int b = 0; b < dxeq::kNumBands; ++b)
+                {
+                    wetL = eqL[b].process (wetL);
+                    wetR = eqR[b].process (wetR);
+                }
+
             wetL *= duckGain;
             wetR *= duckGain;
 
@@ -208,6 +224,18 @@ private:
         // duck envelope uses the user's attack/release
         duckAtkCoeff = onePoleCoeff (msToHz (std::max (0.5f,  p.attackMs)),  sr);
         duckRelCoeff = onePoleCoeff (msToHz (std::max (5.0f,  p.releaseMs)), sr);
+
+        // wet EQ biquads (coeffs only — state is preserved across recompute)
+        const auto& cfg = dxeq::bands();
+        for (int b = 0; b < dxeq::kNumBands; ++b)
+        {
+            const auto co = dxeq::computeCoeffs (cfg[(size_t) b].type,
+                                                 (double) p.eqFreq[b],
+                                                 (double) p.eqGain[b],
+                                                 (double) cfg[(size_t) b].q, sr);
+            eqL[b].setCoeffs (co);
+            eqR[b].setCoeffs (co);
+        }
     }
 
     static float msToHz (float ms) { return 1000.0f / std::max (0.01f, ms); }
@@ -228,6 +256,10 @@ private:
     // filter + smoothing state
     float lpL = 0, lpR = 0, hpL = 0, hpR = 0;
     float smDelayL = 1.0f, smDelayR = 1.0f;
+
+    // wet EQ (5 bands per channel)
+    dxeq::Biquad eqL[dxeq::kNumBands];
+    dxeq::Biquad eqR[dxeq::kNumBands];
 
     // ducking state
     float detEnv = 0.0f;

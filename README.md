@@ -11,9 +11,21 @@ are always there — ducking only controls how much of them you hear. The result
 is a big, lush delay that never fights the lead vocal for space.
 
 Styled with the neon/chrome hardware look — a metallic-black faceplate on a
-black void — re-tuned to a **purple + deep-blue** palette, with a live scope
-that shows the vocal envelope (blue) against the echo level / duck history
-(purple).
+black void — re-tuned to a **purple + deep-blue** palette. The controls are
+grouped into two clearly separated panels — **DELAY / ECHO** (blue) and
+**SELF-DUCK / DYNAMICS** (purple) — above a "wave box" screen that toggles
+between a live scope and an interactive EQ.
+
+## Wave box
+
+A button in the wave box's bottom-left corner switches the screen between:
+- **SCOPE** — the dry-vocal envelope (blue) against the echo level / duck
+  history (purple), with the live gain-reduction and host BPM readouts.
+- **EQ** — an interactive **5-point EQ** on the *wet delay signal*: a low
+  shelf, three bells, and a high shelf, each a draggable node (drag left/right
+  for frequency, up/down for ±18 dB gain). The purple curve is the real biquad
+  response. Double-click a node to reset its gain. The EQ is bypassed when the
+  toggle is off.
 
 ## Controls
 
