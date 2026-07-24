@@ -46,6 +46,7 @@ public:
         bool  eqOn = false;
         float eqFreq[dxeq::kNumBands] { 100.0f, 300.0f, 1000.0f, 3500.0f, 9000.0f };
         float eqGain[dxeq::kNumBands] { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+        float eqQ   [dxeq::kNumBands] { 0.7f, 1.0f, 1.0f, 1.0f, 0.7f };
 
         // --- output ---
         float outputGainDb = 0.0f;
@@ -232,7 +233,7 @@ private:
             const auto co = dxeq::computeCoeffs (cfg[(size_t) b].type,
                                                  (double) p.eqFreq[b],
                                                  (double) p.eqGain[b],
-                                                 (double) cfg[(size_t) b].q, sr);
+                                                 (double) p.eqQ[b], sr);
             eqL[b].setCoeffs (co);
             eqR[b].setCoeffs (co);
         }

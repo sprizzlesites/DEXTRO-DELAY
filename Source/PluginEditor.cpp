@@ -14,6 +14,7 @@ ScopeView::ScopeView (DextroDelayAudioProcessor& p) : proc (p)
     {
         freqP[b] = proc.apvts.getParameter ("eqfreq" + String (b));
         gainP[b] = proc.apvts.getParameter ("eqgain" + String (b));
+        qP[b]    = proc.apvts.getParameter ("eqq"    + String (b));
     }
     startTimerHz (30);
 }
@@ -197,12 +198,13 @@ void ScopeView::paintEq (Graphics& g)
     // --- compute per-band coeffs from current param values ---
     const auto& cfg = dxeq::bands();
     dxeq::Coeffs co[dxeq::kNumBands];
-    float bf[dxeq::kNumBands], bg[dxeq::kNumBands];
+    float bf[dxeq::kNumBands], bg[dxeq::kNumBands], bq[dxeq::kNumBands];
     for (int b = 0; b < dxeq::kNumBands; ++b)
     {
         bf[b] = freqP[b] ? freqP[b]->getNormalisableRange().convertFrom0to1 (freqP[b]->getValue()) : cfg[(size_t) b].defFreq;
         bg[b] = gainP[b] ? gainP[b]->getNormalisableRange().convertFrom0to1 (gainP[b]->getValue()) : 0.0f;
-        co[b] = dxeq::computeCoeffs (cfg[(size_t) b].type, (double) bf[b], (double) bg[b], (double) cfg[(size_t) b].q, sr);
+        bq[b] = qP[b]    ? qP[b]->getNormalisableRange().convertFrom0to1 (qP[b]->getValue())       : cfg[(size_t) b].q;
+        co[b] = dxeq::computeCoeffs (cfg[(size_t) b].type, (double) bf[b], (double) bg[b], (double) bq[b], sr);
     }
 
     // --- composite response curve ---
@@ -246,7 +248,7 @@ void ScopeView::paintEq (Graphics& g)
         g.drawText (String (b + 1), Rectangle<float> (x - 8.0f, y - 18.0f, 16.0f, 11.0f), Justification::centred);
     }
 
-    // --- header ---
+    // --- header + active-band readout ---
     g.setColour (neon::neonPurple);
     g.setFont (neon::makeFont (11.0f, Font::bold));
     g.drawText ("WET EQ", r.reduced (8.0f).removeFromTop (14.0f).removeFromLeft (80.0f), Justification::centredLeft);
@@ -254,6 +256,25 @@ void ScopeView::paintEq (Graphics& g)
     {
         g.setColour (neon::textDim);
         g.drawText ("(bypassed)", r.reduced (8.0f).removeFromTop (14.0f).withTrimmedLeft (60.0f).removeFromLeft (90.0f), Justification::centredLeft);
+    }
+
+    const int show = (dragBand >= 0 ? dragBand : hoverBand);
+    if (show >= 0)
+    {
+        auto hz = [] (float v) { return v >= 1000.0f ? String (v / 1000.0f, 2) + "k" : String (v, 0); };
+        const String txt = "BAND " + String (show + 1) + "   "
+                         + hz (bf[show]) + " Hz   "
+                         + String (bg[show], 1) + " dB   Q " + String (bq[show], 2);
+        g.setColour (neon::textBright);
+        g.setFont (neon::makeFont (11.0f, Font::bold));
+        g.drawText (txt, r.reduced (10.0f).removeFromTop (16.0f).withTrimmedLeft (90.0f), Justification::topRight);
+    }
+    else
+    {
+        g.setColour (neon::textDim.withAlpha (0.8f));
+        g.setFont (neon::makeFont (10.0f, Font::plain));
+        g.drawText ("drag = freq / gain   |   scroll = Q   |   dbl-click = reset",
+                    r.reduced (10.0f).removeFromTop (15.0f).withTrimmedLeft (90.0f), Justification::topRight);
     }
 }
 
@@ -312,6 +333,23 @@ void ScopeView::mouseDoubleClick (const MouseEvent& e)
         gainP[n]->endChangeGesture();
         repaint();
     }
+}
+
+void ScopeView::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
+{
+    if (! eqMode()) return;
+    // Adjust the Q of the node under the cursor (or the one being dragged).
+    const int n = (dragBand >= 0 ? dragBand : nodeAt (e.position));
+    if (n < 0 || ! qP[n]) return;
+
+    hoverBand = n;
+    const float cur = qP[n]->getNormalisableRange().convertFrom0to1 (qP[n]->getValue());
+    const float dir = (w.deltaY != 0.0f ? w.deltaY : w.deltaX) * (w.isReversed ? -1.0f : 1.0f);
+    // Multiplicative so it feels even across the whole range; scroll up = tighter.
+    const float next = jlimit (dxeq::kMinQ, dxeq::kMaxQ, cur * std::exp (dir * 1.2f));
+
+    qP[n]->setValueNotifyingHost (qP[n]->getNormalisableRange().convertTo0to1 (next));
+    repaint();
 }
 
 //==============================================================================
@@ -375,7 +413,7 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
     for (auto& s : specs) addKnob (s);
 
     startTimerHz (30);
-    setSize (780, 600);
+    setSize (780, 740);
     updateSyncUI();
 }
 
@@ -490,9 +528,9 @@ void DextroDelayAudioProcessorEditor::resized()
     const int x0 = plate.getX() + 18;
     const int w  = plate.getWidth() - 36;
 
-    // Wave box.
+    // Wave box (double height — a big EQ / scope screen).
     const int waveY = plate.getY() + 60;
-    const int waveH = 140;
+    const int waveH = 280;
     wavePanel = { x0, waveY, w, waveH };
     scope.setBounds (wavePanel.reduced (2));
     eqBtn.setBounds (x0 + 8, waveY + waveH - 30, 44, 22);

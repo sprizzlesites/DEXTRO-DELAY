@@ -43,6 +43,8 @@ namespace dxeq
     }
 
     static constexpr float kMaxGainDb = 18.0f;
+    static constexpr float kMinQ = 0.30f;   // wide / gentle
+    static constexpr float kMaxQ = 6.0f;    // narrow / surgical
 
     struct Coeffs { double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0; };
 

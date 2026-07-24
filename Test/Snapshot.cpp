@@ -26,11 +26,11 @@ int main (int argc, char** argv)
                 p->setValueNotifyingHost (p->getNormalisableRange().convertTo0to1 (v));
         };
         set ("eqon", 1.0f);
-        set ("eqgain0", 6.0f);    set ("eqfreq0", 90.0f);     // low shelf up
-        set ("eqgain1", -5.0f);   set ("eqfreq1", 320.0f);    // low-mid dip
-        set ("eqgain2", 4.0f);    set ("eqfreq2", 1200.0f);   // presence
-        set ("eqgain3", -3.0f);   set ("eqfreq3", 3500.0f);
-        set ("eqgain4", 7.0f);    set ("eqfreq4", 9000.0f);   // air
+        set ("eqgain0", 6.0f);    set ("eqfreq0", 90.0f);    set ("eqq0", 0.7f);   // low shelf up
+        set ("eqgain1", -6.0f);   set ("eqfreq1", 320.0f);   set ("eqq1", 3.2f);   // narrow low-mid dip
+        set ("eqgain2", 4.0f);    set ("eqfreq2", 1200.0f);  set ("eqq2", 1.4f);   // presence
+        set ("eqgain3", -3.0f);   set ("eqfreq3", 3500.0f);  set ("eqq3", 4.5f);   // surgical notch
+        set ("eqgain4", 7.0f);    set ("eqfreq4", 9000.0f);  set ("eqq4", 0.7f);   // air
     }
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc.createEditor());

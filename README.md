@@ -22,10 +22,13 @@ A button in the wave box's bottom-left corner switches the screen between:
 - **SCOPE** — the dry-vocal envelope (blue) against the echo level / duck
   history (purple), with the live gain-reduction and host BPM readouts.
 - **EQ** — an interactive **5-point EQ** on the *wet delay signal*: a low
-  shelf, three bells, and a high shelf, each a draggable node (drag left/right
-  for frequency, up/down for ±18 dB gain). The purple curve is the real biquad
-  response. Double-click a node to reset its gain. The EQ is bypassed when the
-  toggle is off.
+  shelf, three bells, and a high shelf, each a draggable node:
+    - **drag** left/right for frequency, up/down for ±18 dB gain,
+    - **scroll** over a node to adjust its **Q** (0.3 wide → 6.0 surgical),
+    - **double-click** to reset its gain.
+  The purple curve is the real biquad response, and the active band's
+  frequency / gain / Q read out at the top. The EQ is bypassed when the toggle
+  is off.
 
 ## Controls
 

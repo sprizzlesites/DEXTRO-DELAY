@@ -27,6 +27,7 @@ public:
     void mouseUp          (const juce::MouseEvent&) override;
     void mouseMove        (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove   (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
     void timerCallback() override;
@@ -50,6 +51,7 @@ private:
     int hoverBand = -1;
     juce::RangedAudioParameter* freqP[dxeq::kNumBands] { };
     juce::RangedAudioParameter* gainP[dxeq::kNumBands] { };
+    juce::RangedAudioParameter* qP   [dxeq::kNumBands] { };
 
     static constexpr float fMin = 20.0f, fMax = 20000.0f;
 

@@ -25,6 +25,7 @@ namespace pid
     static const juce::String eqon     = "eqon";
     static juce::String eqFreq (int i) { return "eqfreq" + juce::String (i); }
     static juce::String eqGain (int i) { return "eqgain" + juce::String (i); }
+    static juce::String eqQ    (int i) { return "eqq"    + juce::String (i); }
 }
 
 namespace synced
@@ -142,6 +143,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout DextroDelayAudioProcessor::c
         params.push_back (std::make_unique<P> (pid::eqGain (b), "EQ " + juce::String (b + 1) + " Gain",
             R (-dxeq::kMaxGainDb, dxeq::kMaxGainDb, 0.1f), 0.0f,
             Attr().withStringFromValueFunction ([db] (float v, int) { return db (v); })));
+
+        params.push_back (std::make_unique<P> (pid::eqQ (b), "EQ " + juce::String (b + 1) + " Q",
+            R (dxeq::kMinQ, dxeq::kMaxQ, 0.01f, 0.4f), eqCfg[(size_t) b].q,
+            Attr().withStringFromValueFunction ([] (float v, int) { return juce::String (v, 2); })));
     }
 
     return { params.begin(), params.end() };
@@ -207,6 +212,7 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     {
         p.eqFreq[b] = apvts.getRawParameterValue (pid::eqFreq (b))->load();
         p.eqGain[b] = apvts.getRawParameterValue (pid::eqGain (b))->load();
+        p.eqQ[b]    = apvts.getRawParameterValue (pid::eqQ (b))->load();
     }
     engine.setParams (p);
 
