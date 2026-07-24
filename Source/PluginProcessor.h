@@ -57,6 +57,7 @@ public:
 
     int  readScope (std::array<ScopeFrame, kScopeSize>& out) const;
     float getCurrentDuckGain() const { return currentDuck.load(); }
+    float getCurrentBpm()      const { return currentBpm.load(); }
 
 private:
     DuckingDelay engine;
@@ -66,6 +67,7 @@ private:
     std::array<std::atomic<float>, kScopeSize> scopeDuck;
     std::atomic<int> scopeHead { 0 };
     std::atomic<float> currentDuck { 1.0f };
+    std::atomic<float> currentBpm  { 120.0f };
     int   scopeDecim = 0;
     int   scopeDecimN = 32;   // push ~1 frame per 32 samples
 

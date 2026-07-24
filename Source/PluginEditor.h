@@ -47,6 +47,7 @@ private:
     struct KnobSpec { juce::String id, label; bool purple; };
 
     void addKnob (const KnobSpec& spec);
+    void updateSyncUI();
 
     DextroDelayAudioProcessor& processor;
     neon::NeonLookAndFeel lnf;
@@ -62,6 +63,14 @@ private:
 
     juce::TextButton pingpong { "PING-PONG" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pingAtt;
+
+    // Tempo-sync: a SYNC toggle plus a note-division knob that shares the TIME
+    // cell — the division knob shows when synced, the free-ms knob when not.
+    juce::TextButton syncBtn { "SYNC" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> syncAtt;
+    std::unique_ptr<juce::Slider> divKnob;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>  divAtt;
+    int lastSyncState = -1;
 
     float rimGlow = 0.0f;
     float glowPhase = 0.0f;

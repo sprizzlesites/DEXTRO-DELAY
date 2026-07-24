@@ -7,6 +7,8 @@
 //==============================================================================
 namespace pid
 {
+    static const juce::String sync     = "sync";
+    static const juce::String division = "division";
     static const juce::String time     = "time";
     static const juce::String offset   = "offset";
     static const juce::String feedback = "feedback";
@@ -20,6 +22,22 @@ namespace pid
     static const juce::String mix      = "mix";
     static const juce::String output   = "output";
     static const juce::String pingpong = "pingpong";
+}
+
+namespace synced
+{
+    // Straight note values only, longest -> shortest.
+    static const juce::StringArray divisionNames { "1/1", "1/2", "1/4", "1/8", "1/16", "1/32" };
+    // Length of each in quarter notes.
+    static const float quarterMult[6] { 4.0f, 2.0f, 1.0f, 0.5f, 0.25f, 0.125f };
+
+    // Delay time in ms for a note division at a given tempo.
+    inline float divisionMs (int index, double bpm)
+    {
+        index = juce::jlimit (0, 5, index);
+        const double quarterMs = 60000.0 / juce::jmax (20.0, bpm);
+        return (float) (quarterMs * quarterMult[index]);
+    }
 }
 
 //==============================================================================
@@ -47,6 +65,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout DextroDelayAudioProcessor::c
                                                     : juce::String (v, 0) + " Hz"; };
     auto pct  = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; };
     auto db   = [] (float v) { return juce::String (v, 1) + " dB"; };
+
+    // Tempo sync: ON by default. When on, the Time knob locks to note values.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        pid::sync, "Sync", true));
+
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        pid::division, "Division", synced::divisionNames, 3));   // default 1/8
 
     params.push_back (std::make_unique<P> (pid::time, "Time",
         R (5.0f, 2000.0f, 0.01f, 0.3f), 380.0f,
@@ -127,12 +152,25 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numCh = buffer.getNumChannels();
     const int n     = buffer.getNumSamples();
 
+    // Host tempo (for sync). Modern AudioPlayHead API — valid on JUCE 7 & 8.
+    double bpm = 120.0;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            if (auto b = pos->getBpm())
+                bpm = *b;
+    currentBpm.store ((float) bpm);
+
     // Pull parameters and map into the engine.
     DuckingDelay::Params p;
-    const float t   = apvts.getRawParameterValue (pid::time)->load();
-    const float off = apvts.getRawParameterValue (pid::offset)->load();
-    p.delayMsL      = t;
-    p.delayMsR      = juce::jmin (2000.0f, t + off);
+    const bool  sync = apvts.getRawParameterValue (pid::sync)->load() > 0.5f;
+    const int   div  = (int) apvts.getRawParameterValue (pid::division)->load();
+    const float t    = apvts.getRawParameterValue (pid::time)->load();
+    const float off  = apvts.getRawParameterValue (pid::offset)->load();
+
+    // Base delay: a locked note value when synced, else the free ms knob.
+    const float base = sync ? synced::divisionMs (div, bpm) : t;
+    p.delayMsL       = juce::jmin (5000.0f, base);
+    p.delayMsR       = juce::jmin (5000.0f, base + off);
     p.feedback      = apvts.getRawParameterValue (pid::feedback)->load();
     p.dampHz        = apvts.getRawParameterValue (pid::tone)->load();
     p.lowCutHz      = apvts.getRawParameterValue (pid::lowcut)->load();

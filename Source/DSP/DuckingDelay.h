@@ -213,7 +213,9 @@ private:
     static float msToHz (float ms) { return 1000.0f / std::max (0.01f, ms); }
 
     // config
-    static constexpr double maxDelayMs = 2000.0;
+    // 5 s ceiling so a synced whole note fits even at slow tempos
+    // (1/1 at 48 BPM = 5000 ms); the free-time knob still tops out at 2 s.
+    static constexpr double maxDelayMs = 5000.0;
     static constexpr float  kneeDb     = 6.0f;
 
     Params p;

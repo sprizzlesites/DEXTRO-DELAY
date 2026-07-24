@@ -20,13 +20,18 @@ that shows the vocal envelope (blue) against the echo level / duck history
 **Delay / Echo (blue)**
 | Knob | What it does |
 |---|---|
-| **TIME** | Left delay time, 5 ms – 2 s |
-| **R OFFSET** | Adds to the right channel's time for stereo spread |
+| **SYNC** | Tempo-sync toggle (**on by default**). When on, the Time knob locks to note values from the host tempo; turn it off for free millisecond timing |
+| **TIME** | With SYNC on, steps through note divisions — **1/1, 1/2, 1/4, 1/8, 1/16, 1/32**. With SYNC off, a free delay time of 5 ms – 2 s |
+| **R OFFSET** | Adds to the right channel's time (ms) for stereo spread |
 | **FEEDBACK** | Regeneration, up to 98 % |
 | **TONE** | Hi-cut in the feedback path — repeats darken |
 | **LOW CUT** | Lo-cut in the feedback path — repeats thin out |
 | **WIDTH** | Stereo width of the wet signal |
 | **PING-PONG** | Cross-couples the feedback L↔R so echoes bounce |
+
+The delay reads the host tempo (via the play-head), so when synced the echoes
+track the session BPM — shown on the scope. The scope shows `120 BPM` as a
+fallback when the host reports no tempo (e.g. the Standalone app).
 
 **Self-Duck / Dynamics + Output (purple)**
 | Knob | What it does |

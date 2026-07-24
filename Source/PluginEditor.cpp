@@ -105,6 +105,13 @@ void ScopeView::paint (Graphics& g)
     g.setFont (neon::makeFont (12.0f, Font::bold));
     g.drawText (String (grDb, 1) + " dB", r.reduced (8.0f).removeFromTop (16.0f),
                 Justification::topRight);
+
+    // Tempo readout (bottom-right) — the clock the synced division follows.
+    g.setColour (neon::textDim);
+    g.setFont (neon::makeFont (10.5f, Font::bold));
+    g.drawText (String (proc.getCurrentBpm(), 1) + " BPM",
+                r.reduced (8.0f).removeFromBottom (14.0f).removeFromRight (90.0f),
+                Justification::bottomRight);
 }
 
 //==============================================================================
@@ -131,6 +138,26 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
     pingAtt = std::make_unique<AudioProcessorValueTreeState::ButtonAttachment> (
         processor.apvts, "pingpong", pingpong);
 
+    // SYNC toggle: neon-black button, blue (delay-section) border, glows when on.
+    syncBtn.setClickingTogglesState (true);
+    syncBtn.getProperties().set ("neonBlack", true);
+    syncBtn.getProperties().set ("neonPink", false);   // blue idle border
+    syncBtn.setColour (TextButton::textColourOffId, neon::neonBlue);
+    syncBtn.setColour (TextButton::textColourOnId, neon::neonBlue.brighter (0.4f));
+    addAndMakeVisible (syncBtn);
+    syncAtt = std::make_unique<AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.apvts, "sync", syncBtn);
+
+    // Note-division knob shares the TIME cell (blue, like the delay section).
+    divKnob = std::make_unique<Slider> (Slider::RotaryHorizontalVerticalDrag,
+                                        Slider::TextBoxBelow);
+    divKnob->setTextBoxStyle (Slider::TextBoxBelow, false, 74, 15);
+    divKnob->getProperties().set ("glowPink", false);
+    divKnob->setColour (Slider::textBoxTextColourId, neon::neonBlue);
+    addChildComponent (*divKnob);   // visibility managed by updateSyncUI()
+    divAtt = std::make_unique<AudioProcessorValueTreeState::SliderAttachment> (
+        processor.apvts, "division", *divKnob);
+
     // Knob bank. Blue = delay/time domain, purple = self-duck/dynamics.
     const std::array<KnobSpec, 12> specs {{
         { "time",     "TIME",      false }, { "offset",  "R OFFSET",  false },
@@ -144,6 +171,17 @@ DextroDelayAudioProcessorEditor::DextroDelayAudioProcessorEditor (DextroDelayAud
 
     startTimerHz (30);
     setSize (780, 560);
+    updateSyncUI();
+}
+
+void DextroDelayAudioProcessorEditor::updateSyncUI()
+{
+    const bool synced = processor.apvts.getRawParameterValue ("sync")->load() > 0.5f;
+    lastSyncState = synced ? 1 : 0;
+    if (! knobs.empty()) knobs[0]->setVisible (! synced);   // free-ms TIME knob
+    if (divKnob)          divKnob->setVisible (synced);      // note-division knob
+    if (labels.size() > 0)
+        labels[0]->setText (synced ? "SYNC" : "TIME", juce::dontSendNotification);
 }
 
 DextroDelayAudioProcessorEditor::~DextroDelayAudioProcessorEditor()
@@ -177,6 +215,12 @@ void DextroDelayAudioProcessorEditor::timerCallback()
 {
     glowPhase += 0.045f;
     rimGlow = 0.65f + 0.35f * std::sin (glowPhase);
+
+    // React to the SYNC toggle (from the button or host automation).
+    const int synced = processor.apvts.getRawParameterValue ("sync")->load() > 0.5f ? 1 : 0;
+    if (synced != lastSyncState)
+        updateSyncUI();
+
     repaint();
 }
 
@@ -257,8 +301,9 @@ void DextroDelayAudioProcessorEditor::resized()
     const int screenH = 150;
     scope.setBounds (x0, screenY, w, screenH);
 
-    // Ping-pong button in the screen's bottom-left corner.
-    pingpong.setBounds (x0 + 8, screenY + screenH - 30, 92, 22);
+    // Transport buttons in the screen's bottom-left corner.
+    syncBtn.setBounds  (x0 + 8, screenY + screenH - 30, 64, 22);
+    pingpong.setBounds (x0 + 8 + 64 + 8, screenY + screenH - 30, 92, 22);
 
     // Two rows of six knobs.
     const int cols = 6;
@@ -283,4 +328,8 @@ void DextroDelayAudioProcessorEditor::resized()
 
     for (int i = 0; i < 6; ++i)  place (i,     0, i);
     for (int i = 0; i < 6; ++i)  place (i + 6, 1, i);
+
+    // The note-division knob overlays the TIME cell (index 0).
+    if (divKnob && ! knobs.empty())
+        divKnob->setBounds (knobs[0]->getBounds());
 }
