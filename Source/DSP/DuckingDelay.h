@@ -37,6 +37,8 @@ public:
         bool  pingpong    = false;    // cross-couple the feedback L<->R
         float inputDrive  = 1.0f;     // level of the input fed INTO the delay (0 = no new
                                       // echoes) — does NOT affect the dry pass-through
+        float inPanL      = 1.0f;     // pan gains applied to the delay INPUT only (before
+        float inPanR      = 1.0f;     // ping-pong) — dry pass-through stays centred
 
         // --- self-ducking (sidechain = dry input) ---
         float duckDepthDb = 18.0f;    // max gain reduction of the wet when vocal is loud
@@ -150,8 +152,11 @@ public:
             // pass-through (below) and the duck detector (above) stay at full,
             // so turning this down stops feeding the echoes without silencing
             // the dry signal or disabling ducking.
-            const float inL = dryL * p.inputDrive;
-            const float inR = dryR * p.inputDrive;
+            // Pan is applied here, to the delay input only (right before the
+            // ping-pong cross-feed) — never to the dry pass-through or the
+            // sidechain detector.
+            const float inL = dryL * p.inputDrive * p.inPanL;
+            const float inR = dryR * p.inputDrive * p.inPanR;
             float writeL, writeR;
             if (p.pingpong)
             {

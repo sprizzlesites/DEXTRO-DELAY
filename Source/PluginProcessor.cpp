@@ -236,6 +236,13 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     p.outputGainDb  = apvts.getRawParameterValue (pid::output)->load();
     p.pingpong      = apvts.getRawParameterValue (pid::pingpong)->load() > 0.5f;
     p.inputDrive    = apvts.getRawParameterValue (pid::indrive)->load();
+
+    // Input pan → constant-power gains applied to the delay input only.
+    const float pan = apvts.getRawParameterValue (pid::inpan)->load();
+    const float ang = (pan * 0.5f + 0.5f) * juce::MathConstants<float>::halfPi;
+    p.inPanL        = std::cos (ang) * juce::MathConstants<float>::sqrt2;   // 1.0 at centre
+    p.inPanR        = std::sin (ang) * juce::MathConstants<float>::sqrt2;
+
     p.eqOn          = apvts.getRawParameterValue (pid::eqon)->load() > 0.5f;
     for (int b = 0; b < dxeq::kNumBands; ++b)
     {
@@ -245,18 +252,8 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     }
     engine.setParams (p);
 
-    // Input pan BEFORE the delay chain (constant-power balance). At centre both
-    // channels stay at unity power; panned, one side leads so ping-pong has
-    // real L/R asymmetry to bounce even from centred material.
-    const float pan   = apvts.getRawParameterValue (pid::inpan)->load();
-    const float ang   = (pan * 0.5f + 0.5f) * juce::MathConstants<float>::halfPi;
-    const float panL  = std::cos (ang) * juce::MathConstants<float>::sqrt2;   // 1.0 at centre
-    const float panR  = std::sin (ang) * juce::MathConstants<float>::sqrt2;
-
     if (numCh >= 2)
     {
-        buffer.applyGain (0, 0, n, panL);
-        buffer.applyGain (1, 0, n, panR);
         engine.process (buffer.getWritePointer (0), buffer.getWritePointer (1), n);
     }
     else if (numCh == 1)

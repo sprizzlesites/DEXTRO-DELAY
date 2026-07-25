@@ -259,7 +259,30 @@ int main (int argc, char** argv)
             { std::fprintf (stderr, "FAIL: EQ produced non-finite / runaway output\n"); ok = false; }
     }
 
-    std::printf ("\n%s\n", ok ? "PASS: self-ducking delay + wet EQ verified."
+    // ---- input pan must NOT affect the dry pass-through ----
+    // At mix = 0 (fully dry) the output must be identical regardless of pan,
+    // because pan is applied only to the signal fed into the delay.
+    {
+        const int M = std::min (n, (int) (sr * 10.0));
+        auto runPan = [&] (float pl, float pr, std::vector<float>& L)
+        {
+            DuckingDelay::Params pp = p;
+            pp.mix = 0.0f; pp.inPanL = pl; pp.inPanR = pr;
+            DuckingDelay e; e.prepare (sr, 512); e.setParams (pp);
+            std::vector<float> r (M); L.assign (M, 0.0f);
+            for (int i = 0; i < M; ++i) { L[i] = in.L[i]; r[i] = in.R[i]; }
+            for (int i = 0; i < M; i += block) e.process (&L[i], &r[i], std::min (block, M - i));
+        };
+        std::vector<float> centre, hardLeft;
+        runPan (1.0f, 1.0f, centre);       // centred
+        runPan (1.4142f, 0.0f, hardLeft);  // hard left
+        double maxDiff = 0.0;
+        for (int i = 0; i < M; ++i) maxDiff = std::max (maxDiff, (double) std::fabs (centre[i] - hardLeft[i]));
+        std::printf ("\n--- pan vs dry ---\ndry-passthrough diff (centre vs hard-left, mix=0): %.2e\n", maxDiff);
+        if (! (maxDiff < 1e-6)) { std::fprintf (stderr, "FAIL: input pan altered the dry pass-through\n"); ok = false; }
+    }
+
+    std::printf ("\n%s\n", ok ? "PASS: self-ducking delay + wet EQ + dry-safe pan verified."
                               : "TEST FAILED");
     return ok ? 0 : 1;
 }
