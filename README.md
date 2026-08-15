@@ -21,9 +21,11 @@ The top bar has two input controls, both applied **before** the delay chain:
   enters the echoes, but the **dry pass-through is untouched** and the ducker
   still keys off the full dry vocal — so you can fade the echoes out from the
   source without silencing the dry signal.
-- **INPUT PAN** — a constant-power balance, so ping-pong has real L/R asymmetry
-  to bounce even on centred/mono material instead of just echoing down the
-  middle.
+- **INPUT PAN** — a constant-power balance that places the source in the
+  delay's stereo field. It affects the **delay feed only** — the dry
+  pass-through and the ducker's sidechain always see the original, un-panned
+  signal. In **ping-pong** mode the injection is single-sided by construction,
+  so the pan's direction instead selects which side the bounce starts on.
 
 ## Wave box
 
@@ -53,7 +55,7 @@ A button in the wave box's bottom-left corner switches the screen between:
 | **TONE** | Hi-cut in the feedback path — repeats darken |
 | **LOW CUT** | Lo-cut in the feedback path — repeats thin out |
 | **WIDTH** | Stereo width of the wet signal |
-| **PING-PONG** | Cross-couples the feedback L↔R so echoes bounce |
+| **PING-PONG** | Echoes bounce L→R→L. The input is summed and injected into **one** delay line, then cross-coupled feedback alternates it, so it bounces for any source — mono, centred, or wide. The **INPUT PAN** direction picks the side the bounce starts on (centre/left = left, right = right) |
 
 The delay reads the host tempo (via the play-head), so when synced the echoes
 track the session BPM — shown on the scope. The scope shows `120 BPM` as a

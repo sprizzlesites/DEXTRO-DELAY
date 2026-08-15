@@ -182,6 +182,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DextroDelayAudioProcessor::c
 void DextroDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock);
+    monoScratch.setSize (1, juce::jmax (8192, samplesPerBlock * 4), false, true, false);
     scopeDecimN = juce::jmax (1, (int) (sampleRate / 1500.0));   // ~1500 frames/sec
     scopeDecim  = 0;
 }
@@ -242,6 +243,10 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float ang = (pan * 0.5f + 0.5f) * juce::MathConstants<float>::halfPi;
     p.inPanL        = std::cos (ang) * juce::MathConstants<float>::sqrt2;   // 1.0 at centre
     p.inPanR        = std::sin (ang) * juce::MathConstants<float>::sqrt2;
+    // In ping-pong the input is single-sided by construction (any continuous
+    // L/R split would be symmetric at centre and stop bouncing), so the pan's
+    // DIRECTION picks which side the bounce starts on — centre starts left.
+    p.ppStartRight  = (pan > 0.0f);
 
     p.eqOn          = apvts.getRawParameterValue (pid::eqon)->load() > 0.5f;
     for (int b = 0; b < dxeq::kNumBands; ++b)
@@ -258,11 +263,18 @@ void DextroDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     }
     else if (numCh == 1)
     {
-        // Mono: duplicate into a scratch right channel, process, take the left.
-        juce::HeapBlock<float> tmp (n);
+        // Mono: run the stereo engine on a duplicated pair using a preallocated
+        // scratch channel (never allocate on the audio thread), then fold the
+        // two outputs back down. Averaging is what keeps ping-pong intact in
+        // mono — taking only the left would drop every other repeat — and the
+        // dry is identical in both, so it survives the average at unity.
         auto* l = buffer.getWritePointer (0);
-        std::memcpy (tmp.get(), l, sizeof (float) * (size_t) n);
-        engine.process (l, tmp.get(), n);
+        const int m = juce::jmin (n, monoScratch.getNumSamples());
+        auto* r = monoScratch.getWritePointer (0);
+        std::memcpy (r, l, sizeof (float) * (size_t) m);
+        engine.process (l, r, m);
+        for (int i = 0; i < m; ++i)
+            l[i] = 0.5f * (l[i] + r[i]);
     }
 
     // Feed the analyzer with the wet (post-duck, post-EQ) signal.

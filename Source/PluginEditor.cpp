@@ -29,7 +29,9 @@ bool ScopeView::eqMode() const
 void ScopeView::timerCallback()
 {
     glowPhase += 0.06f;
-    if (! eqMode())
+    if (eqMode())
+        updateSpectrum();      // once per tick: the bars' fall-off is time-based,
+    else                       // not paint-based (hover/drag repaints would speed it up)
         proc.readScope (frames);
     repaint();
 }
@@ -201,7 +203,7 @@ void ScopeView::paintEq (Graphics& g)
     if (sr < 8000.0) sr = 44100.0;
 
     // --- reactive cube-pixel spectrum (green bottom -> blue mid -> purple top) ---
-    updateSpectrum();
+    // (levels are advanced on the timer, so painting never changes the decay)
     {
         const int   cols = kBars;
         const int   rows = 15;
@@ -406,7 +408,10 @@ void ScopeView::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& w)
     // Multiplicative so it feels even across the whole range; scroll up = tighter.
     const float next = jlimit (dxeq::kMinQ, dxeq::kMaxQ, cur * std::exp (dir * 1.2f));
 
+    // Bracket in a gesture so hosts record/undo the change like a real edit.
+    qP[n]->beginChangeGesture();
     qP[n]->setValueNotifyingHost (qP[n]->getNormalisableRange().convertTo0to1 (next));
+    qP[n]->endChangeGesture();
     repaint();
 }
 

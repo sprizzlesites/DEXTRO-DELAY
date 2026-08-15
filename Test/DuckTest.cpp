@@ -282,7 +282,61 @@ int main (int argc, char** argv)
         if (! (maxDiff < 1e-6)) { std::fprintf (stderr, "FAIL: input pan altered the dry pass-through\n"); ok = false; }
     }
 
-    std::printf ("\n%s\n", ok ? "PASS: self-ducking delay + wet EQ + dry-safe pan verified."
+    // ---- ping-pong must alternate L/R, even for a CENTRED (mono) source ----
+    // This is the case that used to collapse to the centre: the input was fed
+    // into both delay lines, so with dryL == dryR the two lines were identical.
+    {
+        const float  delayMs = 100.0f;
+        const int    D  = (int) (sr * delayMs * 0.001);
+        const int    M  = D * 5;
+        std::vector<float> l ((size_t) M, 0.0f), r ((size_t) M, 0.0f);
+        l[0] = r[0] = 1.0f;                     // dead-centre impulse
+
+        DuckingDelay::Params pp;
+        pp.delayMsL = pp.delayMsR = delayMs;
+        pp.feedback = 0.6f; pp.mix = 1.0f;      // fully wet so we measure echoes only
+        pp.dampHz = 18000.0f; pp.lowCutHz = 20.0f;
+        pp.width = 1.0f; pp.pingpong = true;
+        pp.duckDepthDb = 0.0f;                  // ducking off for this measurement
+        pp.eqOn = false; pp.ppStartRight = false;
+
+        DuckingDelay e; e.prepare (sr, 512); e.setParams (pp);
+        for (int i = 0; i < M; i += block) e.process (&l[(size_t) i], &r[(size_t) i], std::min (block, M - i));
+
+        // Peak of each repeat window, per channel.
+        auto peak = [&] (const std::vector<float>& v, int centreIdx)
+        {
+            double pk = 0.0;
+            const int lo = std::max (0, centreIdx - D / 4), hi = std::min (M, centreIdx + D / 4);
+            for (int i = lo; i < hi; ++i) pk = std::max (pk, (double) std::fabs (v[(size_t) i]));
+            return pk;
+        };
+        const double l1 = peak (l, D),     r1 = peak (r, D);
+        const double l2 = peak (l, 2 * D), r2 = peak (r, 2 * D);
+        const double l3 = peak (l, 3 * D), r3 = peak (r, 3 * D);
+
+        std::printf ("\n--- ping-pong (centred mono source) ---\n");
+        std::printf ("repeat 1: L %.3f  R %.3f\n", l1, r1);
+        std::printf ("repeat 2: L %.3f  R %.3f\n", l2, r2);
+        std::printf ("repeat 3: L %.3f  R %.3f\n", l3, r3);
+
+        // Each repeat must be clearly one-sided, alternating L, R, L.
+        if (! (l1 > r1 * 8.0)) { std::fprintf (stderr, "FAIL: repeat 1 not on the left\n");  ok = false; }
+        if (! (r2 > l2 * 8.0)) { std::fprintf (stderr, "FAIL: repeat 2 did not bounce to the right\n"); ok = false; }
+        if (! (l3 > r3 * 8.0)) { std::fprintf (stderr, "FAIL: repeat 3 did not bounce back to the left\n"); ok = false; }
+
+        // And the pan direction must flip which side it starts on.
+        std::vector<float> l2v ((size_t) M, 0.0f), r2v ((size_t) M, 0.0f);
+        l2v[0] = r2v[0] = 1.0f;
+        DuckingDelay::Params pr = pp; pr.ppStartRight = true;
+        DuckingDelay e2; e2.prepare (sr, 512); e2.setParams (pr);
+        for (int i = 0; i < M; i += block) e2.process (&l2v[(size_t) i], &r2v[(size_t) i], std::min (block, M - i));
+        const double sl1 = peak (l2v, D), sr1 = peak (r2v, D);
+        std::printf ("start-right repeat 1: L %.3f  R %.3f\n", sl1, sr1);
+        if (! (sr1 > sl1 * 8.0)) { std::fprintf (stderr, "FAIL: pan-right did not start the bounce on the right\n"); ok = false; }
+    }
+
+    std::printf ("\n%s\n", ok ? "PASS: ducking + wet EQ + dry-safe pan + ping-pong bounce verified."
                               : "TEST FAILED");
     return ok ? 0 : 1;
 }

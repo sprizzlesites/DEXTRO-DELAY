@@ -54,6 +54,11 @@ namespace dxeq
         Coeffs c;
         if (sr <= 0.0) return c;
 
+        // Keep the band below Nyquist: the top shelf sits at 18 kHz, which is
+        // above Nyquist at 32 kHz project rates and would produce a broken
+        // (or unstable) biquad.
+        freqHz = std::min (freqHz, sr * 0.45);
+
         const double A = std::pow (10.0, gainDb / 40.0);
         const double w0 = 2.0 * M_PI * (freqHz / sr);
         const double cw = std::cos (w0);

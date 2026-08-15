@@ -1,7 +1,11 @@
 // Offscreen UI snapshot: construct the processor + editor and render the GUI to
-// a PNG, so the neon (purple / deep-blue) look can be eyeballed without a DAW.
+// a PNG, so the neon look can be eyeballed without a DAW.
 //
-//   Snapshot <output.png>
+//   Snapshot <output.png> [eq]
+//
+// With "eq" the EQ view is enabled, a demo curve is dialled in, and noise is fed
+// through the plugin while the message loop is pumped, so the editor's real
+// timer path fills the spectrum analyzer before the snapshot is taken.
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
@@ -10,15 +14,25 @@
 int main (int argc, char** argv)
 {
     const juce::String outPath = argc > 1 ? argv[1] : "dextro_ui.png";
+    const bool eqMode = (argc > 2 && juce::String (argv[2]) == "eq");
 
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     DextroDelayAudioProcessor proc;
     proc.prepareToPlay (44100.0, 512);
 
-    // Optional 2nd arg "eq" turns the EQ on and shapes a demo curve so the
-    // editor's EQ mode can be captured.
-    if (argc > 2 && juce::String (argv[2]) == "eq")
+    juce::Random rng (1234);
+    juce::AudioBuffer<float> buf (2, 512);
+    juce::MidiBuffer midi;
+    auto feed = [&]
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < buf.getNumSamples(); ++i)
+                buf.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.3f);
+        proc.processBlock (buf, midi);
+    };
+
+    if (eqMode)
     {
         auto set = [&] (const juce::String& id, float v)
         {
@@ -32,24 +46,23 @@ int main (int argc, char** argv)
         set ("eqgain3", -3.0f);   set ("eqfreq3", 3500.0f);  set ("eqq3", 4.5f);   // surgical notch
         set ("eqgain4", 7.0f);    set ("eqfreq4", 9000.0f);  set ("eqq4", 0.7f);   // air
 
-        // Feed white noise so the analyzer has a ready block for the render.
-        juce::Random rng (1234);
-        juce::AudioBuffer<float> buf (2, 512);
-        juce::MidiBuffer midi;
-        auto feed = [&] { for (int ch = 0; ch < 2; ++ch)
-                              for (int i = 0; i < buf.getNumSamples(); ++i)
-                                  buf.setSample (ch, i, (rng.nextFloat() * 2.0f - 1.0f) * 0.3f);
-                          proc.processBlock (buf, midi); };
-
-        for (int k = 0; k < 120; ++k) feed();     // prime the delay / feedback with echoes
-        proc.clearAnalyzerReady();
-        for (int k = 0; k < 4; ++k) feed();        // one clean 2048-sample crossing -> ready
+        for (int k = 0; k < 120; ++k) feed();   // prime the delay so echoes exist
     }
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (proc.createEditor());
-
-    // Give the layout a chance to settle.
     editor->resized();
+
+    if (eqMode)
+    {
+        // Interleave audio with message-loop time so the editor's 30 Hz timer
+        // consumes fresh analyzer blocks (the spectrum's fall-off is on that
+        // timer, so the bars must be topped up right before the snapshot).
+        for (int round = 0; round < 6; ++round)
+        {
+            for (int k = 0; k < 6; ++k) feed();          // > one 2048-sample FFT block
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+        }
+    }
 
     juce::Image img = editor->createComponentSnapshot (editor->getLocalBounds(), false, 2.0f);
 

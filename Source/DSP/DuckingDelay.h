@@ -39,6 +39,7 @@ public:
                                       // echoes) — does NOT affect the dry pass-through
         float inPanL      = 1.0f;     // pan gains applied to the delay INPUT only (before
         float inPanR      = 1.0f;     // ping-pong) — dry pass-through stays centred
+        bool  ppStartRight = false;   // which line the ping-pong bounce starts on
 
         // --- self-ducking (sidechain = dry input) ---
         float duckDepthDb = 18.0f;    // max gain reduction of the wet when vocal is loud
@@ -65,7 +66,9 @@ public:
         bufL.assign ((size_t) bufLen, 0.0f);
         bufR.assign ((size_t) bufLen, 0.0f);
 
-        wetMonoBuf.assign ((size_t) std::max (64, maxBlock), 0.0f);
+        // Generous headroom so process() never has to allocate on the audio
+        // thread if the host hands us a larger block than it promised.
+        wetMonoBuf.assign ((size_t) std::max (8192, maxBlock * 4), 0.0f);
         wetMonoN = 0;
 
         reset();
@@ -98,8 +101,8 @@ public:
     // Process one interleaved-by-pointer stereo block, in place.
     void process (float* left, float* right, int numSamples)
     {
-        if ((int) wetMonoBuf.size() < numSamples) wetMonoBuf.assign ((size_t) numSamples, 0.0f);
-        wetMonoN = numSamples;
+        // Never allocate here (audio thread): just cap what we tap this block.
+        wetMonoN = std::min (numSamples, (int) wetMonoBuf.size());
         const float wet     = p.mix;
         const float dryGain = std::sqrt (1.0f - std::min (1.0f, wet));  // gentle crossfade
         const float wetGain = std::sqrt (std::min (1.0f, wet));
@@ -131,8 +134,8 @@ public:
             duckGainMeter = duckGain;
 
             // ---- smooth the delay times (tape-like glide on automation) ----
-            smDelayL += 0.0008f * (targetDL - smDelayL);
-            smDelayR += 0.0008f * (targetDR - smDelayR);
+            smDelayL += delaySmoothCoeff * (targetDL - smDelayL);
+            smDelayR += delaySmoothCoeff * (targetDR - smDelayR);
 
             const float delayedL = readFrac (bufL, smDelayL);
             const float delayedR = readFrac (bufR, smDelayR);
@@ -155,18 +158,26 @@ public:
             // Pan is applied here, to the delay input only (right before the
             // ping-pong cross-feed) — never to the dry pass-through or the
             // sidechain detector.
-            const float inL = dryL * p.inputDrive * p.inPanL;
-            const float inR = dryR * p.inputDrive * p.inPanR;
             float writeL, writeR;
             if (p.pingpong)
             {
-                writeL = inL + filtR * fb;
-                writeR = inR + filtL * fb;
+                // TRUE ping-pong: the input must enter ONE line only. If it is
+                // fed to both, the two lines carry identical material for any
+                // centred/mono source and the repeats collapse to the centre
+                // instead of bouncing. So sum to mono, inject it into the start
+                // line (chosen by the pan's direction), and let the crossed
+                // feedback alternate it L->R->L. Level is pan-independent here;
+                // the pan picks the SIDE the bounce starts on.
+                const float monoIn = 0.5f * (dryL + dryR) * p.inputDrive;
+                writeL = (p.ppStartRight ? 0.0f : monoIn) + filtR * fb;
+                writeR = (p.ppStartRight ? monoIn : 0.0f) + filtL * fb;
             }
             else
             {
-                writeL = inL + filtL * fb;
-                writeR = inR + filtR * fb;
+                // Independent stereo lines: the pan places the source in the
+                // delay's stereo field.
+                writeL = dryL * p.inputDrive * p.inPanL + filtL * fb;
+                writeR = dryR * p.inputDrive * p.inPanR + filtR * fb;
             }
             bufL[(size_t) wIdx] = writeL;
             bufR[(size_t) wIdx] = writeR;
@@ -192,7 +203,7 @@ public:
 
             // Tap the EQ'd wet (pre-duck) so the analyzer always shows the EQ
             // shaping clearly, independent of how hard the ducker is pulling.
-            wetMonoBuf[(size_t) n] = 0.5f * (wetL + wetR);
+            if (n < wetMonoN) wetMonoBuf[(size_t) n] = 0.5f * (wetL + wetR);
 
             wetL *= duckGain;
             wetR *= duckGain;
@@ -207,7 +218,7 @@ public:
     float getDuckGain()  const { return duckGainMeter; }  // 1 = open, <1 = ducked
     float getInputEnv()  const { return inputEnvMeter; }   // linear dry envelope
 
-    // Wet signal (post duck + EQ) for the UI spectrum, valid for the last block.
+    // Wet signal (post EQ, PRE duck) for the UI spectrum, valid for the last block.
     const float* getWetMono() const { return wetMonoBuf.data(); }
     int          getWetCount() const { return wetMonoN; }
 
@@ -251,6 +262,10 @@ private:
         // duck envelope uses the user's attack/release
         duckAtkCoeff = onePoleCoeff (msToHz (std::max (0.5f,  p.attackMs)),  sr);
         duckRelCoeff = onePoleCoeff (msToHz (std::max (5.0f,  p.releaseMs)), sr);
+
+        // Delay-time glide: a fixed ~30 ms time constant at any sample rate
+        // (a hard-coded per-sample step would glide at half speed at 96 kHz).
+        delaySmoothCoeff = onePoleCoeff (msToHz (30.0f), sr);
 
         // wet EQ biquads (coeffs only — state is preserved across recompute)
         const auto& cfg = dxeq::bands();
@@ -298,6 +313,7 @@ private:
 
     // coefficients
     float dampCoeff = 0.5f, lowCutCoeff = 0.02f;
+    float delaySmoothCoeff = 0.0008f;
     float detAtkCoeff = 0.3f, detRelCoeff = 0.01f;
     float duckAtkCoeff = 0.2f, duckRelCoeff = 0.01f;
 

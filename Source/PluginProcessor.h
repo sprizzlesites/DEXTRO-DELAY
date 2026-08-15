@@ -34,7 +34,9 @@ public:
     bool acceptsMidi() const override  { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 4.0; }
+    // Worst case: a 5 s delay with high feedback still ringing — under-reporting
+    // this truncates the echoes on an offline/bounce render.
+    double getTailLengthSeconds() const override { return 10.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -70,6 +72,10 @@ public:
 
 private:
     DuckingDelay engine;
+
+    // Preallocated scratch right-channel for the mono path (no audio-thread
+    // allocation).
+    juce::AudioBuffer<float> monoScratch;
 
     // scope ring
     std::array<std::atomic<float>, kScopeSize> scopeEnv;
